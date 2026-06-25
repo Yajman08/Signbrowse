@@ -1,0 +1,1246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SignBrowse — Extension Sandbox & Developer Dashboard</title>
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  
+  <!-- Link the Chrome Extension's stylesheet so we can use its classes directly -->
+  <link rel="stylesheet" href="styles/overlay.css">
+
+  <style>
+    /* Premium Reset & Core Styles */
+    :root {
+      --bg-dark: #080811;
+      --bg-card: rgba(17, 17, 34, 0.75);
+      --border-glow: rgba(108, 99, 255, 0.25);
+      --primary: #6c63ff;
+      --primary-glow: rgba(108, 99, 255, 0.4);
+      --accent: #ff65a3;
+      --accent-glow: rgba(255, 101, 163, 0.4);
+      --text-main: #e2e8f0;
+      --text-muted: #8a99ad;
+      --success: #10b981;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-dark);
+      background-image: 
+        radial-gradient(circle at 10% 20%, rgba(108, 99, 255, 0.08) 0%, transparent 40%),
+        radial-gradient(circle at 90% 80%, rgba(255, 101, 163, 0.06) 0%, transparent 40%);
+      color: var(--text-main);
+      font-family: 'Outfit', sans-serif;
+      min-height: 100vh;
+      overflow-x: hidden;
+      padding: 24px;
+    }
+
+    /* Scrollbars */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: rgba(255, 255, 255, 0.02);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(108, 99, 255, 0.25);
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(108, 99, 255, 0.4);
+    }
+
+    /* Container & Layout */
+    .dashboard-container {
+      max-width: 1440px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 24px;
+    }
+
+    @media (min-width: 1100px) {
+      .dashboard-container {
+        grid-template-columns: 1.2fr 0.8fr;
+      }
+    }
+
+    /* Header Panel */
+    .dashboard-header {
+      grid-column: 1 / -1;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 20px 32px;
+      background: var(--bg-card);
+      backdrop-filter: blur(16px);
+      border: 1px solid var(--border-glow);
+      border-radius: 20px;
+      box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+      animation: fadeInDown 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .header-logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .header-logo-icon {
+      font-size: 28px;
+      background: linear-gradient(135deg, var(--primary), var(--accent));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      filter: drop-shadow(0 2px 10px rgba(108, 99, 255, 0.4));
+    }
+
+    .header-title h1 {
+      font-size: 24px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      background: linear-gradient(to right, #ffffff, #a5b4fc);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .header-title p {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    .header-badge {
+      background: rgba(108, 99, 255, 0.15);
+      border: 1px solid rgba(108, 99, 255, 0.3);
+      border-radius: 20px;
+      color: #c7d2fe;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 6px 14px;
+      letter-spacing: 0.5px;
+    }
+
+    /* Glassmorphic Panel Base */
+    .glass-panel {
+      background: var(--bg-card);
+      backdrop-filter: blur(16px);
+      border: 1px solid var(--border-glow);
+      border-radius: 20px;
+      box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .glass-panel::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 4px;
+      background: linear-gradient(90deg, var(--primary), var(--accent));
+      opacity: 0.7;
+    }
+
+    .panel-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      padding-bottom: 12px;
+    }
+
+    .panel-title-icon {
+      color: var(--primary);
+    }
+
+    /* Left Column: Mock Browser */
+    .mock-browser {
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: #0f0f1d;
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 15px 35px rgba(0, 0, 0, 0.5);
+    }
+
+    .browser-header {
+      background: #16162a;
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .browser-dots {
+      display: flex;
+      gap: 6px;
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+    }
+    .dot.red { background: #ef4444; }
+    .dot.yellow { background: #f59e0b; }
+    .dot.green { background: #10b981; }
+
+    .browser-address {
+      flex-grow: 1;
+      background: rgba(0, 0, 0, 0.3);
+      border-radius: 20px;
+      padding: 6px 14px;
+      font-size: 12px;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .browser-address-lock {
+      color: var(--success);
+      font-size: 10px;
+    }
+
+    .browser-viewport {
+      padding: 24px;
+      min-height: 480px;
+      max-height: 600px;
+      overflow-y: auto;
+      background: #0b0b14;
+      line-height: 1.7;
+      color: #cbd5e1;
+      position: relative;
+    }
+
+    .article-title {
+      font-size: 24px;
+      font-weight: 800;
+      color: #fff;
+      margin-bottom: 16px;
+      background: linear-gradient(135deg, #ffffff, #a5b4fc);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .article-section {
+      margin-bottom: 20px;
+    }
+
+    .article-section h3 {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--primary);
+      margin: 14px 0 8px 0;
+    }
+
+    .article-para {
+      font-size: 14px;
+      margin-bottom: 12px;
+    }
+
+    .highlight-tip {
+      background: rgba(108, 99, 255, 0.08);
+      border-left: 3px solid var(--primary);
+      padding: 12px;
+      border-radius: 4px;
+      font-size: 13px;
+      color: #a5b4fc;
+      margin: 16px 0;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    /* Custom Selection Tooltip & Context Menu */
+    .selection-tooltip {
+      position: absolute;
+      background: #1e1b4b;
+      border: 1px solid var(--primary);
+      border-radius: 8px;
+      padding: 4px;
+      display: flex;
+      gap: 4px;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+      z-index: 1000;
+      opacity: 0;
+      transform: translateY(10px) scale(0.95);
+      transition: opacity 0.2s, transform 0.2s;
+      pointer-events: none;
+    }
+
+    .selection-tooltip.show {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+      pointer-events: all;
+    }
+
+    .tooltip-btn {
+      background: transparent;
+      border: none;
+      color: #fff;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 6px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: background 0.2s;
+    }
+
+    .tooltip-btn:hover {
+      background: var(--primary);
+    }
+
+    /* Custom Context Menu */
+    .custom-context-menu {
+      position: absolute;
+      background: #111122;
+      border: 1px solid rgba(108, 99, 255, 0.3);
+      border-radius: 8px;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+      min-width: 200px;
+      z-index: 1001;
+      padding: 4px 0;
+      display: none;
+    }
+
+    .context-menu-item {
+      padding: 8px 16px;
+      font-size: 13px;
+      color: #e2e8f0;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      transition: background 0.15s, color 0.15s;
+    }
+
+    .context-menu-item:hover {
+      background: var(--primary);
+      color: #fff;
+    }
+
+    .context-menu-divider {
+      height: 1px;
+      background: rgba(255, 255, 255, 0.08);
+      margin: 4px 0;
+    }
+
+    /* Right Column: Control & Inspect Dashboard */
+    .sidebar-layout {
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    /* Interactive Extension Popup Section */
+    .extension-popup-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .extension-toolbar-mockup {
+      width: 100%;
+      background: #131326;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 12px;
+      padding: 8px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 13px;
+    }
+
+    .toolbar-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--text-muted);
+    }
+
+    .toolbar-extensions {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .extension-icon-btn {
+      font-size: 16px;
+      cursor: pointer;
+      padding: 4px;
+      border-radius: 4px;
+      transition: background 0.2s;
+    }
+
+    .extension-icon-btn:hover {
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    .extension-icon-btn.active {
+      background: rgba(108, 99, 255, 0.15);
+      border: 1px solid var(--primary-glow);
+    }
+
+    .popup-iframe-wrapper {
+      width: 320px;
+      height: 480px;
+      border: 1px solid rgba(108, 99, 255, 0.3);
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+      background: #111;
+      display: none;
+      opacity: 0;
+      transform: translateY(-10px);
+      transition: opacity 0.3s, transform 0.3s;
+    }
+
+    .popup-iframe-wrapper.show {
+      display: block;
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .popup-iframe-wrapper iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+    }
+
+    /* Console Panel */
+    .console-panel {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      background: #05050a;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 12px;
+      padding: 16px;
+      min-height: 160px;
+      max-height: 220px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      box-shadow: inset 0 0 10px rgba(0,0,0,0.8);
+    }
+
+    .console-line {
+      display: flex;
+      gap: 8px;
+      line-height: 1.4;
+      animation: fadeIn 0.2s ease;
+    }
+
+    .console-time {
+      color: #4b5563;
+      flex-shrink: 0;
+    }
+
+    .console-tag {
+      font-weight: 700;
+      flex-shrink: 0;
+      padding: 0 4px;
+      border-radius: 3px;
+    }
+
+    .console-tag.sys { background: rgba(59, 130, 246, 0.15); color: #60a5fa; }
+    .console-tag.sw { background: rgba(139, 92, 246, 0.15); color: #a78bfa; }
+    .console-tag.cs { background: rgba(6, 182, 212, 0.15); color: #22d3ee; }
+    .console-tag.api { background: rgba(245, 158, 11, 0.15); color: #fbbf24; }
+
+    .console-message {
+      color: #cbd5e1;
+      word-break: break-all;
+    }
+
+    /* Control Sandbox Settings */
+    .controls-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .control-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+    }
+
+    .control-label {
+      font-size: 14px;
+      color: var(--text-main);
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .control-label span {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    /* Switch button styling */
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 44px;
+      height: 22px;
+    }
+
+    .switch input { 
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: #2e2e48;
+      transition: .4s;
+      border-radius: 34px;
+      border: 1px solid rgba(255,255,255,0.05);
+    }
+
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 14px;
+      width: 14px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: .4s;
+      border-radius: 50%;
+    }
+
+    input:checked + .slider {
+      background-color: var(--primary);
+    }
+
+    input:checked + .slider:before {
+      transform: translateX(22px);
+    }
+
+    .btn-preset {
+      background: rgba(108, 99, 255, 0.12);
+      border: 1px solid rgba(108, 99, 255, 0.3);
+      color: #fff;
+      padding: 6px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-preset:hover {
+      background: var(--primary);
+      box-shadow: 0 0 10px rgba(108, 99, 255, 0.3);
+    }
+
+    /* Instructions & Guide Drawer */
+    .guide-panel {
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .guide-steps {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 8px;
+    }
+
+    .guide-step {
+      display: flex;
+      gap: 12px;
+      background: rgba(255,255,255,0.02);
+      padding: 10px;
+      border-radius: 8px;
+      border: 1px solid rgba(255,255,255,0.02);
+    }
+
+    .guide-num {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: var(--primary);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+
+    .code-snippet {
+      font-family: monospace;
+      background: rgba(0,0,0,0.3);
+      padding: 2px 5px;
+      border-radius: 4px;
+      color: var(--accent);
+      font-size: 12px;
+    }
+
+    /* Dynamic Fingerspelling Hand Skeleton Simulation Styles */
+    .hands-skeleton-container {
+      width: 100px;
+      height: 100px;
+      position: relative;
+    }
+
+    .active-spelling-letter {
+      position: absolute;
+      bottom: -5px;
+      right: -5px;
+      background: var(--primary);
+      color: #fff;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 16px;
+      border: 2px solid #13131f;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+      animation: letterPop 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+
+    .spelling-subtext {
+      font-size: 11px;
+      color: var(--accent);
+      margin-top: 4px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+    }
+
+    /* Keyframes */
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    @keyframes fadeInDown {
+      from {
+        opacity: 0;
+        transform: translateY(-20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes letterPop {
+      0% { transform: scale(0.6); opacity: 0; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+
+    /* Dragging adjustments */
+    #signbrowse-overlay {
+      /* Adjust top/right to show up in the viewport area if fixed, 
+         or we let it sit on top of the document body as absolute relative to page */
+      position: fixed;
+      top: 150px;
+      right: 50px;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="dashboard-container">
+    
+    <!-- Top Header -->
+    <header class="dashboard-header">
+      <div class="header-logo">
+        <span class="header-logo-icon">🤟</span>
+        <div class="header-title">
+          <h1>SignBrowse</h1>
+          <p>Chrome Extension Interactive Sandbox &amp; Debug Console</p>
+        </div>
+      </div>
+      <div style="display: flex; gap: 12px; align-items: center;">
+        <span class="header-badge">MANIFEST V3</span>
+        <span class="header-badge" style="background: rgba(16, 185, 129, 0.15); border-color: rgba(16, 185, 129, 0.3); color: #d1fae5;">PHASE 4 READY</span>
+      </div>
+    </header>
+
+    <!-- Left Column: Simulated Web Browser -->
+    <section class="glass-panel" style="padding: 16px;">
+      <div class="panel-title">
+        <span class="panel-title-icon">🌐</span>
+        <span>Simulated Web Browser Viewport</span>
+      </div>
+      
+      <div class="mock-browser">
+        <!-- Browser Chrome UI -->
+        <div class="browser-header">
+          <div class="browser-dots">
+            <div class="dot red"></div>
+            <div class="dot yellow"></div>
+            <div class="dot green"></div>
+          </div>
+          <div class="browser-address">
+            <span class="browser-address-lock">🔒</span>
+            <span>https://en.wikipedia.org/wiki/Indian_Sign_Language</span>
+          </div>
+        </div>
+
+        <!-- Simulated Web Page Content -->
+        <div class="browser-viewport" id="browser-viewport">
+          <h2 class="article-title">Indian Sign Language (ISL)</h2>
+          
+          <div class="highlight-tip">
+            <span style="font-size: 20px;">💡</span>
+            <div>
+              <strong>Quick Start:</strong> Highlight any text in this browser window, then <strong>Right-Click</strong> to open the custom menu, or click the floating <strong>"🤟 Translate"</strong> badge that appears!
+            </div>
+          </div>
+
+          <div class="article-section">
+            <p class="article-para">
+              <strong>Indian Sign Language (ISL)</strong> is the predominant sign language used by the deaf community in India. It is a complete and rich natural language with its own grammar, syntax, and vocabulary, entirely distinct from spoken languages like English or Hindi.
+            </p>
+            
+            <p class="article-para">
+              Unlike spoken languages which rely on acoustic sounds, ISL relies on visual-spatial communication. This incorporates a combination of <strong>hand gestures (handshapes), movement, orientation, facial expressions, and body postures</strong> to convey meaning and syntax.
+            </p>
+          </div>
+
+          <div class="article-section">
+            <h3>Fingerspelling and Signs</h3>
+            <p class="article-para">
+              In ISL, spelling out English words letter-by-letter is known as <strong>fingerspelling</strong>. It is commonly used for proper nouns (names of people, cities, brands) or words for which a specific sign does not yet exist. ISL uses a unique <strong>two-handed fingerspelling system</strong>, which differs significantly from the one-handed system used in American Sign Language (ASL).
+            </p>
+            <p class="article-para">
+              The SignBrowse extension seeks to bridge the gap by parsing page text and generating dynamic sign overlays. This allows users to easily learn or read web content in sign formats.
+            </p>
+          </div>
+
+          <div class="article-section">
+            <h3>Try These Preset Sentences</h3>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px;">
+              <button class="btn-preset" onclick="simulateSelection('I am going to college today')">"I am going to college today"</button>
+              <button class="btn-preset" onclick="simulateSelection('What is your name?')">"What is your name?"</button>
+              <button class="btn-preset" onclick="simulateSelection('I do not like apples')">"I do not like apples"</button>
+              <button class="btn-preset" onclick="simulateSelection('Hello World')">"Hello World"</button>
+            </div>
+          </div>
+          
+          <!-- Mock Floating Selection Tooltip -->
+          <div class="selection-tooltip" id="selection-tooltip">
+            <button class="tooltip-btn" id="tooltip-translate-btn">
+              <span>🤟</span> Translate to Sign
+            </button>
+          </div>
+
+          <!-- Custom Context Menu Mockup -->
+          <div class="custom-context-menu" id="custom-context-menu">
+            <div class="context-menu-item" onclick="alert('Mock copy action performed.')">Copy <span style="margin-left: auto; color: var(--text-muted); font-size: 11px;">Ctrl+C</span></div>
+            <div class="context-menu-item" onclick="alert('Mock search action performed.')">Search Google for selection</div>
+            <div class="context-menu-divider"></div>
+            <div class="context-menu-item" id="context-menu-translate-btn" style="font-weight: 700; color: #a5b4fc;">
+              <span>🤟</span> Translate to Sign Language
+            </div>
+            <div class="context-menu-divider"></div>
+            <div class="context-menu-item" onclick="alert('Mock inspect action.')">Inspect Page</div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- Right Column: Debug logs & controls -->
+    <section class="sidebar-layout">
+      
+      <!-- Extension Control Panel -->
+      <div class="glass-panel">
+        <div class="panel-title">
+          <span class="panel-title-icon">⚙️</span>
+          <span>Simulation Controls</span>
+        </div>
+        
+        <div class="controls-panel">
+          <div class="control-row">
+            <div class="control-label">
+              <strong>Fingerspelling Preview (Phase 2)</strong>
+              <span>Animate sign vectors letter-by-letter</span>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="toggle-phase2" checked>
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <div class="control-row">
+            <div class="control-label">
+              <strong>Interactive Extension Popup</strong>
+              <span>Open/Close popup.html preview</span>
+            </div>
+            <button class="btn-preset" id="toggle-popup-btn" style="background: rgba(255, 101, 163, 0.12); border-color: rgba(255, 101, 163, 0.3);">
+              Toggle Popup
+            </button>
+          </div>
+        </div>
+
+        <!-- Extension Popup Iframe Wrapper -->
+        <div class="extension-popup-container">
+          <div class="popup-iframe-wrapper" id="popup-iframe-wrapper">
+            <div class="extension-toolbar-mockup">
+              <div class="toolbar-left">
+                <span>🧩</span>
+                <strong>SignBrowse Popup</strong>
+              </div>
+              <div class="toolbar-extensions">
+                <span style="color: var(--success);">● Active</span>
+              </div>
+            </div>
+            <iframe src="popup/popup.html" id="popup-iframe"></iframe>
+          </div>
+        </div>
+      </div>
+
+      <!-- Realtime Log Terminal -->
+      <div class="glass-panel">
+        <div class="panel-title">
+          <span class="panel-title-icon">💻</span>
+          <span>Background Message Console</span>
+        </div>
+        
+        <div class="console-panel" id="console-panel">
+          <!-- Logs will be inserted here dynamically -->
+        </div>
+        <button class="btn-preset" onclick="clearLogs()" style="align-self: flex-end; padding: 4px 10px; font-size: 10px;">Clear Console</button>
+      </div>
+
+      <!-- Developer Walkthrough & Loaded guide -->
+      <div class="glass-panel">
+        <div class="panel-title">
+          <span class="panel-title-icon">📖</span>
+          <span>How to Run Locally in Chrome</span>
+        </div>
+        
+        <div class="guide-panel">
+          <p style="color: var(--text-muted); margin-bottom: 8px;">To run this project as a real extension inside your Google Chrome browser:</p>
+          <div class="guide-steps">
+            <div class="guide-step">
+              <div class="guide-num">1</div>
+              <div>Open Chrome and enter <span class="code-snippet">chrome://extensions</span> in the address bar.</div>
+            </div>
+            <div class="guide-step">
+              <div class="guide-num">2</div>
+              <div>Enable <strong>Developer Mode</strong> using the toggle switch in the top-right corner.</div>
+            </div>
+            <div class="guide-step">
+              <div class="guide-num">3</div>
+              <div>Click the <strong>"Load unpacked"</strong> button in the top-left corner.</div>
+            </div>
+            <div class="guide-step">
+              <div class="guide-num">4</div>
+              <div>Navigate to and select this root folder: <span class="code-snippet">SignBrowse</span>.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <!-- ── MOCK CHROME API LAYER ── -->
+  <script>
+    // Global error handler to print javascript errors in the log console
+    window.onerror = function(message, source, lineno, colno, error) {
+      const filename = source ? source.split('/').pop() : 'inline';
+      addLog('System', `JavaScript Error: ${message} in ${filename}:${lineno}:${colno}`);
+      return false; // let it also log to browser console
+    };
+    window.onunhandledrejection = function(event) {
+      addLog('System', `Unhandled Rejection: ${event.reason}`);
+    };
+
+    // Intercept standard console logging to display in the visual console panel
+    const originalLog = console.log;
+    console.log = function(...args) {
+      originalLog.apply(console, args);
+      const msg = args.join(' ');
+      if (msg.includes('Avatar') || msg.includes('Animation')) {
+        addLog('Content Script', msg);
+      } else {
+        addLog('System', msg);
+      }
+    };
+
+    const originalWarn = console.warn;
+    console.warn = function(...args) {
+      originalWarn.apply(console, args);
+      addLog('System', `WARNING: ${args.join(' ')}`);
+    };
+
+    const originalError = console.error;
+    console.error = function(...args) {
+      originalError.apply(console, args);
+      addLog('System', `ERROR: ${args.join(' ')}`);
+    };
+    // Capture script load success and errors
+    window.addEventListener('load', function(e) {
+      if (e.target.tagName === 'SCRIPT') {
+        const filename = e.target.src ? e.target.src.split('/').pop() : 'inline';
+        addLog('System', `Script loaded: ${filename}`);
+      }
+    }, true);
+    window.addEventListener('error', function(e) {
+      if (e.target.tagName === 'SCRIPT') {
+        const filename = e.target.src ? e.target.src.split('/').pop() : 'inline';
+        addLog('System', `Script failed to load: ${filename}`);
+      }
+    }, true);
+
+    // Console logging helper
+    const consolePanel = document.getElementById('console-panel');
+    function addLog(source, message) {
+      const now = new Date();
+      const timeStr = now.toTimeString().split(' ')[0] + '.' + String(now.getMilliseconds()).padStart(3, '0');
+      
+      let tagClass = 'sys';
+      let tagText = 'SYS';
+      if (source === 'Service Worker') { tagClass = 'sw'; tagText = 'SW'; }
+      else if (source === 'Content Script') { tagClass = 'cs'; tagText = 'CS'; }
+      else if (source === 'API Mock') { tagClass = 'api'; tagText = 'API'; }
+      
+      const line = document.createElement('div');
+      line.className = 'console-line';
+      line.innerHTML = `
+        <span class="console-time">[${timeStr}]</span>
+        <span class="console-tag ${tagClass}">${tagText}</span>
+        <span class="console-message">${message}</span>
+      `;
+      consolePanel.appendChild(line);
+      consolePanel.scrollTop = consolePanel.scrollHeight;
+    }
+
+    function clearLogs() {
+      consolePanel.innerHTML = '';
+      addLog('System', 'Log console cleared.');
+    }
+
+    // Mock Listeners store
+    const mockListeners = {
+      onInstalled: [],
+      contextMenusOnClicked: [],
+      onMessage: []
+    };
+
+    // chrome API Mocking
+    window.chrome = {
+      runtime: {
+        getURL: (path) => path,
+        onInstalled: {
+          addListener: (fn) => mockListeners.onInstalled.push(fn)
+        },
+        onMessage: {
+          addListener: (fn) => mockListeners.onMessage.push(fn)
+        },
+        sendMessage: (message, callback) => {
+          addLog('Content Script', `chrome.runtime.sendMessage: action="${message.type}"`);
+          setTimeout(() => {
+            let responseSent = false;
+            let willRespondAsync = false;
+
+            mockListeners.onMessage.forEach(fn => {
+              const result = fn(message, {}, (response) => {
+                if (!responseSent) {
+                  responseSent = true;
+                  if (callback) callback(response);
+                }
+              });
+              if (result === true) {
+                willRespondAsync = true;
+              }
+            });
+
+            if (!willRespondAsync && !responseSent && callback) {
+              callback({ status: "OK" });
+            }
+          }, 50);
+        },
+        lastError: null
+      },
+      contextMenus: {
+        create: (config) => {
+          addLog('API Mock', `chrome.contextMenus.create: id="${config.id}", title="${config.title}"`);
+        },
+        onClicked: {
+          addListener: (fn) => mockListeners.contextMenusOnClicked.push(fn)
+        }
+      },
+      tabs: {
+        sendMessage: (tabId, message, callback) => {
+          addLog('Service Worker', `Sending message to content script: { type: "${message.type}", payload: "${message.payload.text.substring(0, 30)}..." }`);
+          
+          setTimeout(() => {
+            let responseSent = false;
+            let willRespondAsync = false;
+
+            mockListeners.onMessage.forEach((fn, idx) => {
+              try {
+                addLog('System', `Invoking onMessage[${idx}]...`);
+                const result = fn(message, {}, (response) => {
+                  if (!responseSent) {
+                    responseSent = true;
+                    addLog('Content Script', `Acknowledged message showing translation panel.`);
+                    if (callback) callback(response);
+                  }
+                });
+                if (result === true) {
+                  willRespondAsync = true;
+                }
+                addLog('System', `onMessage[${idx}] returned.`);
+              } catch (err) {
+                addLog('System', `JavaScript Error in onMessage[${idx}]: ${err.message}`);
+                console.error(err);
+              }
+            });
+
+            if (!willRespondAsync && !responseSent && callback) {
+              callback({ status: "OK" });
+            }
+          }, 100);
+        },
+        query: (queryInfo, callback) => {
+          addLog('API Mock', `chrome.tabs.query: ${JSON.stringify(queryInfo)}`);
+          setTimeout(() => callback([{ id: 42 }]), 0);
+        }
+      },
+      scripting: {
+        insertCSS: (config) => {
+          addLog('API Mock', `chrome.scripting.insertCSS: tab=${config.target.tabId}, files=${config.files.join(', ')}`);
+          return Promise.resolve();
+        },
+        executeScript: (config) => {
+          addLog('API Mock', `chrome.scripting.executeScript: tab=${config.target.tabId}, files=${config.files.join(', ')}`);
+          return Promise.resolve();
+        }
+      },
+      storage: {
+        local: {
+          get: (keys, callback) => {
+            addLog('API Mock', `chrome.storage.local.get: keys=${JSON.stringify(keys)}`);
+            const result = {};
+            const keysArray = Array.isArray(keys) ? keys : (typeof keys === 'string' ? [keys] : Object.keys(keys || {}));
+            keysArray.forEach(k => {
+              const val = localStorage.getItem(`sb_mock_${k}`);
+              if (val !== null) {
+                try {
+                  result[k] = JSON.parse(val);
+                } catch (e) {
+                  result[k] = val;
+                }
+              }
+              else if (typeof keys === 'object' && !Array.isArray(keys)) result[k] = keys[k];
+            });
+            setTimeout(() => callback(result), 0);
+          },
+          set: (items, callback) => {
+            addLog('API Mock', `chrome.storage.local.set: keys=${JSON.stringify(Object.keys(items))}`);
+            Object.keys(items).forEach(k => {
+              localStorage.setItem(`sb_mock_${k}`, JSON.stringify(items[k]));
+            });
+            if (callback) setTimeout(callback, 0);
+          }
+        }
+      }
+    };
+
+    addLog('System', 'Mock Chrome extension environment initialized.');
+
+    // Clean up potentially corrupted legacy mock keys
+    try {
+      const logs = localStorage.getItem('sb_mock_researchLogs');
+      if (logs && (logs.includes('[object Object]') || !logs.startsWith('['))) {
+        localStorage.removeItem('sb_mock_researchLogs');
+        addLog('System', 'Cleared corrupted legacy research logs from storage.');
+      }
+    } catch (e) {}
+  </script>
+
+  <!-- Load Extension Code - they bind themselves to our mocked window.chrome -->
+  <script src="utils/constants.js"></script>
+  <script src="engine/isl-dictionary.js"></script>
+  <script src="engine/grammar.js"></script>
+  <script src="engine/translator.js"></script>
+  <script src="engine/prompt-generator/signer-profile.js"></script>
+  <script src="engine/prompt-generator/prompt-templates.js"></script>
+  <script src="engine/prompt-generator/prompt-builder.js"></script>
+  <script src="video-providers/base-provider.js"></script>
+  <script src="video-providers/veo-provider.js"></script>
+  <script src="video-providers/runway-provider.js"></script>
+  <script src="video-providers/kling-provider.js"></script>
+  <script src="video-providers/luma-provider.js"></script>
+  <script src="video-providers/pika-provider.js"></script>
+  <script src="engine/prompt-generator/video-request.js"></script>
+  <script src="engine/prompt-generator/prompt-generator.js"></script>
+  <script src="background/service-worker.js"></script>
+  <script src="content/content.js"></script>
+
+  <!-- Trigger the extension install handler -->
+  <script>
+    setTimeout(() => {
+      addLog('System', 'Simulating Extension installation...');
+      mockListeners.onInstalled.forEach(fn => fn());
+      addLog('System', `Registered listeners: onInstalled=${mockListeners.onInstalled.length}, onMessage=${mockListeners.onMessage.length}`);
+      mockListeners.onMessage.forEach((fn, idx) => {
+        addLog('System', `onMessage[${idx}] registered: ${fn.toString().replace(/\s+/g, ' ').substring(0, 80)}...`);
+      });
+    }, 500);
+  </script>
+
+  <!-- Simulated Webpage Event Logic -->
+  <script>
+    const viewport = document.getElementById('browser-viewport');
+    const tooltip = document.getElementById('selection-tooltip');
+    const customMenu = document.getElementById('custom-context-menu');
+    let currentSelectionText = '';
+    let lastSelectionRange = null;
+
+    // Selection listener to show floating translate badge
+    document.addEventListener('selectionchange', () => {
+      const selection = window.getSelection();
+      const text = selection.toString().trim();
+      
+      if (!text || !viewport.contains(selection.anchorNode)) {
+        tooltip.classList.remove('show');
+        return;
+      }
+      
+      currentSelectionText = text;
+      
+      // Get bounding rect of selection to place the tooltip
+      try {
+        const range = selection.getRangeAt(0);
+        lastSelectionRange = range.cloneRange();
+        const rect = range.getBoundingClientRect();
+        
+        // Find relative coordinates inside viewport
+        const viewportRect = viewport.getBoundingClientRect();
+        const top = rect.top - viewportRect.top + viewport.scrollTop - 40;
+        const left = rect.left - viewportRect.left + (rect.width / 2) - (tooltip.offsetWidth / 2);
+        
+        tooltip.style.top = `${top}px`;
+        tooltip.style.left = `${Math.max(10, left)}px`;
+        tooltip.classList.add('show');
+      } catch (e) {
+        // Selection range error
+      }
+    });
+
+    // Custom Context Menu on Right Click inside browser viewport
+    viewport.addEventListener('contextmenu', (e) => {
+      const selection = window.getSelection();
+      const text = selection.toString().trim();
+      
+      if (text) {
+        e.preventDefault();
+        currentSelectionText = text;
+        
+        const viewportRect = viewport.getBoundingClientRect();
+        const top = e.clientY - viewportRect.top + viewport.scrollTop;
+        const left = e.clientX - viewportRect.left;
+        
+        customMenu.style.top = `${top}px`;
+        customMenu.style.left = `${left}px`;
+        customMenu.style.display = 'block';
+        
+        addLog('System', `User right-clicked on selection: "${text.substring(0, 30)}..."`);
+      }
+    });
+
+    // Hide context menu on click elsewhere
+    document.addEventListener('click', (e) => {
+      if (!customMenu.contains(e.target)) {
+        customMenu.style.display = 'none';
+      }
+    });
+
+    // Translate Button click handlers
+    function triggerTranslation(text) {
+      addLog('System', `Triggering sign translation context action for: "${text}"`);
+      
+      // Simulate contextMenus.onClicked — this triggers the service worker,
+      // which sends a message to the content script's onMessage listener,
+      // which calls showOverlay() → startFingerspelling() internally.
+      const info = {
+        menuItemId: "signbrowse-translate",
+        selectionText: text
+      };
+      const tab = { id: 42 };
+      
+      mockListeners.contextMenusOnClicked.forEach(fn => fn(info, tab));
+      
+      // Hide menus
+      tooltip.classList.remove('show');
+      customMenu.style.display = 'none';
+    }
+
+    document.getElementById('tooltip-translate-btn').addEventListener('click', () => {
+      triggerTranslation(currentSelectionText);
+    });
+
+    document.getElementById('context-menu-translate-btn').addEventListener('click', () => {
+      triggerTranslation(currentSelectionText);
+    });
+
+    // Simulate selection helper (preset clicks)
+    function simulateSelection(text) {
+      addLog('System', `Loading preset sentence: "${text}"`);
+      triggerTranslation(text);
+    }
+
+    // Toggle Extension Popup
+    const togglePopupBtn = document.getElementById('toggle-popup-btn');
+    const popupWrapper = document.getElementById('popup-iframe-wrapper');
+    togglePopupBtn.addEventListener('click', () => {
+      popupWrapper.classList.toggle('show');
+      const isOpen = popupWrapper.classList.contains('show');
+      addLog('System', `Extension toolbar popup ${isOpen ? 'opened' : 'closed'}.`);
+      togglePopupBtn.textContent = isOpen ? 'Hide Popup' : 'Toggle Popup';
+    });
+  </script>
+</body>
+</html>

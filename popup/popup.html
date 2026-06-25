@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SignBrowse</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <div class="popup-container">
+
+    <!-- Header -->
+    <header class="popup-header">
+      <span class="popup-icon">🤟</span>
+      <div>
+        <h1 class="popup-title">SignBrowse</h1>
+        <p class="popup-version">v7.0 · Phase 7 (Real AI Video)</p>
+      </div>
+    </header>
+
+    <!-- Status -->
+    <div class="status-card">
+      <div class="status-dot"></div>
+      <span>Extension active on all pages</span>
+    </div>
+
+    <!-- Instructions -->
+    <section class="instructions">
+      <h2 class="section-title">How to use</h2>
+      <ol class="steps-list">
+        <li>
+          <span class="step-num">1</span>
+          <span>Select any text on a webpage</span>
+        </li>
+        <li>
+          <span class="step-num">2</span>
+          <span>Right-click the selected text</span>
+        </li>
+        <li>
+          <span class="step-num">3</span>
+          <span>Click <strong>"🤟 Translate to Sign Language"</strong></span>
+        </li>
+        <li>
+          <span class="step-num">4</span>
+          <span>A panel appears — drag it anywhere!</span>
+        </li>
+      </ol>
+    </section>
+
+    <!-- API Settings -->
+    <section class="api-settings">
+      <h2 class="section-title">API Settings</h2>
+      <div class="api-field">
+        <div class="api-label-row">
+          <label for="veo-key">Google Veo</label>
+          <span class="api-status missing" id="veo-status">Missing Key</span>
+        </div>
+        <input type="password" id="veo-key" placeholder="Enter Google Veo / Vertex Key" />
+      </div>
+      <div class="api-field">
+        <div class="api-label-row">
+          <label for="veo-project">GCP Project ID</label>
+        </div>
+        <input type="text" id="veo-project" placeholder="Enter Google Cloud Project ID" />
+      </div>
+      <div class="api-field">
+        <div class="api-label-row">
+          <label for="veo-storage">GCS Storage URI</label>
+        </div>
+        <input type="text" id="veo-storage" placeholder="gs://your-bucket/output/" />
+      </div>
+      <div class="api-field">
+        <div class="api-label-row">
+          <label for="runway-key">Runway Gen-4</label>
+          <span class="api-status missing" id="runway-status">Missing Key</span>
+        </div>
+        <input type="password" id="runway-key" placeholder="Enter Runway API Key" />
+      </div>
+      <div class="api-field">
+        <div class="api-label-row">
+          <label for="kling-key">Kling AI</label>
+          <span class="api-status missing" id="kling-status">Missing Key</span>
+        </div>
+        <input type="password" id="kling-key" placeholder="Enter Kling AI API Key" />
+      </div>
+      <div class="api-field">
+        <div class="api-label-row">
+          <label for="luma-key">Luma Dream</label>
+          <span class="api-status missing" id="luma-status">Missing Key</span>
+        </div>
+        <input type="password" id="luma-key" placeholder="Enter Luma API Key" />
+      </div>
+      <div class="api-field">
+        <div class="api-label-row">
+          <label for="pika-key">Pika Labs</label>
+          <span class="api-status missing" id="pika-status">Missing Key</span>
+        </div>
+        <input type="password" id="pika-key" placeholder="Enter Pika API Key" />
+      </div>
+      <button id="save-keys-btn" class="save-btn">Save API Settings</button>
+    </section>
+
+    <!-- Roadmap -->
+    <section class="roadmap">
+      <h2 class="section-title">Development Phases</h2>
+      <ul class="phase-list">
+        <li class="phase done">
+          <span class="phase-badge done-badge">Done</span>
+          <span>Phases 1-4 — Translation &amp; Grammar</span>
+        </li>
+        <li class="phase done">
+          <span class="phase-badge done-badge">Done</span>
+          <span>Phases 5-6 — Prompts &amp; Profiles</span>
+        </li>
+        <li class="phase active">
+          <span class="phase-badge current">Now</span>
+          <span>Phase 7 — Real AI Video Integration</span>
+        </li>
+      </ul>
+    </section>
+
+    <footer class="popup-footer">
+      Built with ♥ for accessibility
+    </footer>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

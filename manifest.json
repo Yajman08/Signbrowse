@@ -1,0 +1,64 @@
+{
+  "manifest_version": 3,
+  "name": "SignBrowse",
+  "version": "3.0.0",
+  "description": "Translate selected text into Indian Sign Language (ISL) with word-level sign lookup and fingerspelling fallback.",
+
+  "icons": {
+    "16":  "icons/icon16.png",
+    "48":  "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16":  "icons/icon16.png",
+      "48":  "icons/icon48.png",
+      "128": "icons/icon128.png"
+    },
+    "default_title": "SignBrowse"
+  },
+
+  "background": {
+    "service_worker": "background/service-worker.js"
+  },
+
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": [
+        "engine/isl-dictionary.js",
+        "engine/grammar.js",
+        "engine/translator.js",
+        "engine/prompt-generator/signer-profile.js",
+        "engine/prompt-generator/prompt-templates.js",
+        "engine/prompt-generator/prompt-builder.js",
+        "video-providers/base-provider.js",
+        "video-providers/veo-provider.js",
+        "video-providers/runway-provider.js",
+        "video-providers/kling-provider.js",
+        "video-providers/luma-provider.js",
+        "video-providers/pika-provider.js",
+        "engine/prompt-generator/video-request.js",
+        "engine/prompt-generator/prompt-generator.js",
+        "content/content.js"
+      ],
+      "css": ["styles/overlay.css"],
+      "run_at": "document_end"
+    }
+  ],
+
+  "permissions": [
+    "contextMenus",
+    "storage",
+    "activeTab",
+    "scripting"
+  ],
+
+  "host_permissions": [
+    "<all_urls>",
+    "https://media.giphy.com/*",
+    "https://*.giphy.com/*"
+  ]
+}

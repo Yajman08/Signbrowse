@@ -1,0 +1,260 @@
+/* ── Reset ────────────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  width: 300px;
+  background: #0f0f1a;
+  color: #e8e8f0;
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.popup-container {
+  padding: 0 0 8px;
+}
+
+/* ── Header ───────────────────────────────────────────────────────────────── */
+.popup-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  background: linear-gradient(135deg, #1a1a2e, #16213e);
+  border-bottom: 1px solid rgba(108, 99, 255, 0.25);
+}
+
+.popup-icon { font-size: 28px; line-height: 1; }
+
+.popup-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #a89bfe;
+  letter-spacing: 0.3px;
+}
+
+.popup-version {
+  font-size: 10px;
+  color: #555;
+  margin-top: 1px;
+}
+
+/* ── Status card ──────────────────────────────────────────────────────────── */
+.status-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px;
+  padding: 8px 12px;
+  background: rgba(108, 99, 255, 0.08);
+  border: 1px solid rgba(108, 99, 255, 0.2);
+  border-radius: 8px;
+  font-size: 12px;
+  color: #a89bfe;
+}
+
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #6dffb3;
+  flex-shrink: 0;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}
+
+/* ── Sections ─────────────────────────────────────────────────────────────── */
+.instructions,
+.roadmap {
+  padding: 4px 12px 12px;
+}
+
+.section-title {
+  font-size: 10px;
+  font-weight: 600;
+  color: #555;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  margin-bottom: 8px;
+}
+
+/* ── How-to steps ─────────────────────────────────────────────────────────── */
+.steps-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.steps-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 12px;
+  color: #ccc;
+}
+
+.step-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(108, 99, 255, 0.2);
+  border: 1px solid rgba(108, 99, 255, 0.35);
+  color: #a89bfe;
+  font-size: 10px;
+  font-weight: 700;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+strong { color: #e8e8f0; }
+
+/* ── Phase roadmap list ───────────────────────────────────────────────────── */
+.phase-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.phase {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: #666;
+}
+
+.phase.active { color: #ccc; }
+
+.phase-badge {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #555;
+  flex-shrink: 0;
+  min-width: 38px;
+  text-align: center;
+  letter-spacing: 0.3px;
+}
+
+.phase-badge.current {
+  background: rgba(108, 99, 255, 0.25);
+  color: #a89bfe;
+  border: 1px solid rgba(108, 99, 255, 0.4);
+}
+
+.phase.done {
+  color: #a0aec0;
+}
+
+.phase-badge.done-badge {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+/* ── API Settings Styling ─────────────────────────────────────────────────── */
+.api-settings {
+  padding: 8px 12px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.api-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.api-label-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.api-label-row label {
+  font-size: 10px;
+  font-weight: 600;
+  color: #a89bfe;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.api-status {
+  font-size: 8px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.api-status.missing {
+  color: #ff6b6b;
+}
+
+.api-status.connected {
+  color: #10b981;
+}
+
+.api-field input {
+  background: #070712;
+  border: 1px solid rgba(108, 99, 255, 0.2);
+  border-radius: 6px;
+  color: #eee;
+  padding: 6px 8px;
+  font-size: 11px;
+  outline: none;
+  font-family: inherit;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  width: 100%;
+}
+
+.api-field input:focus {
+  border-color: #6c63ff;
+  box-shadow: 0 0 6px rgba(108, 99, 255, 0.2);
+}
+
+.save-btn {
+  background: linear-gradient(135deg, #6c63ff 0%, #ff65a3 100%);
+  border: none;
+  border-radius: 6px;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 7px 12px;
+  cursor: pointer;
+  width: 100%;
+  box-shadow: 0 4px 10px rgba(108, 99, 255, 0.25);
+  transition: transform 0.2s, box-shadow 0.2s;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-top: 4px;
+}
+
+.save-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 14px rgba(108, 99, 255, 0.4);
+}
+
+.save-btn:active {
+  transform: translateY(1px);
+}
+
+/* ── Footer ───────────────────────────────────────────────────────────────── */
+.popup-footer {
+  text-align: center;
+  font-size: 10px;
+  color: #333;
+  padding: 8px 12px 4px;
+  border-top: 1px solid rgba(255,255,255,0.04);
+  margin-top: 4px;
+}
