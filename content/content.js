@@ -38,7 +38,10 @@ if (!window.__signBrowseLoaded) {
     // Phase 6 Generative AI state
     let selectedModel = 'google-veo';
     let selectedSigner = 'aanya';
-    let activeMode = 'ai-video'; // 'ai-video' or 'word'
+    let activeMode = 'llm-isl'; // 'llm-isl', 'ai-video', or 'word'
+    let llmResult = null;
+    let llmLoading = false;
+    let llmError = null;
     let generatedVideoData = null;
     let isGenerating = false;
     let generationProgress = 0;
@@ -95,7 +98,7 @@ if (!window.__signBrowseLoaded) {
         }
       });
 
-      console.log("[SignBrowse] Content script ready (Phase 7 — Real AI Video Integration).");
+      console.log("[SignBrowse] Content script ready (Phase 8 — LLM-Driven ISL Pipeline).");
     }
 
     // ─── showOverlay(text) ─────────────────────────────────────────────────
@@ -133,7 +136,9 @@ if (!window.__signBrowseLoaded) {
         overlayEl.classList.remove("sb-hidden");
         overlayEl.classList.add("sb-visible");
 
-        if (activeMode === "ai-video") {
+        if (activeMode === "llm-isl") {
+          renderLLMISLStage();
+        } else if (activeMode === "ai-video") {
           renderVideoStage();
         } else {
           startPlayback();
@@ -181,8 +186,13 @@ if (!window.__signBrowseLoaded) {
       const tabsRow = document.createElement("div");
       tabsRow.className = "sb-tabs-row";
 
+      const llmTabBtn = document.createElement("button");
+      llmTabBtn.className = "sb-tab-btn sb-tab-active";
+      llmTabBtn.id = "sb-tab-llm";
+      llmTabBtn.textContent = "🧠 LLM ISL";
+
       const videoTabBtn = document.createElement("button");
-      videoTabBtn.className = "sb-tab-btn sb-tab-active";
+      videoTabBtn.className = "sb-tab-btn";
       videoTabBtn.id = "sb-tab-video";
       videoTabBtn.textContent = "🤟 AI Video";
 
@@ -191,11 +201,15 @@ if (!window.__signBrowseLoaded) {
       wordTabBtn.id = "sb-tab-word";
       wordTabBtn.textContent = "📖 Word Lookup";
 
+      tabsRow.appendChild(llmTabBtn);
       tabsRow.appendChild(videoTabBtn);
       tabsRow.appendChild(wordTabBtn);
       wrapper.appendChild(tabsRow);
 
       // Tab Switch Event Listeners
+      llmTabBtn.addEventListener("click", () => {
+        switchMode("llm-isl");
+      });
       videoTabBtn.addEventListener("click", () => {
         switchMode("ai-video");
       });
@@ -464,6 +478,7 @@ if (!window.__signBrowseLoaded) {
     function switchMode(mode) {
       activeMode = mode;
       
+      const llmTabBtn = document.getElementById("sb-tab-llm");
       const videoTabBtn = document.getElementById("sb-tab-video");
       const wordTabBtn = document.getElementById("sb-tab-word");
       const aiConfigPanel = document.getElementById("sb-ai-config-panel");
@@ -473,9 +488,22 @@ if (!window.__signBrowseLoaded) {
 
       stopWordPlayback();
 
-      if (mode === "ai-video") {
+      // Reset all tabs
+      if (llmTabBtn) llmTabBtn.classList.remove("sb-tab-active");
+      if (videoTabBtn) videoTabBtn.classList.remove("sb-tab-active");
+      if (wordTabBtn) wordTabBtn.classList.remove("sb-tab-active");
+
+      if (mode === "llm-isl") {
+        if (llmTabBtn) llmTabBtn.classList.add("sb-tab-active");
+        if (aiConfigPanel) aiConfigPanel.style.display = "none";
+        if (promptWrap) promptWrap.style.display = "none";
+        if (wordLabel) wordLabel.style.display = "none";
+        if (signDesc) signDesc.style.display = "none";
+
+        setStatus("LLM ISL Mode — Gemini-powered translation");
+        renderLLMISLStage();
+      } else if (mode === "ai-video") {
         if (videoTabBtn) videoTabBtn.classList.add("sb-tab-active");
-        if (wordTabBtn) wordTabBtn.classList.remove("sb-tab-active");
         if (aiConfigPanel) aiConfigPanel.style.display = "grid";
         if (promptWrap) promptWrap.style.display = "flex";
         if (wordLabel) wordLabel.style.display = "none";
@@ -484,7 +512,6 @@ if (!window.__signBrowseLoaded) {
         setStatus("Generative AI Mode active");
         renderVideoStage();
       } else {
-        if (videoTabBtn) videoTabBtn.classList.remove("sb-tab-active");
         if (wordTabBtn) wordTabBtn.classList.add("sb-tab-active");
         if (aiConfigPanel) aiConfigPanel.style.display = "none";
         if (promptWrap) promptWrap.style.display = "none";
@@ -494,6 +521,165 @@ if (!window.__signBrowseLoaded) {
         setStatus("Word Lookup Mode active");
         startPlayback();
       }
+    }
+
+    // ─── renderLLMISLStage() ───────────────────────────────────────────────
+    function renderLLMISLStage() {
+      const card = document.getElementById("sb-sign-card");
+      if (!card) return;
+
+      card.innerHTML = "";
+      card.className = "sb-sign-card";
+
+      if (llmLoading) {
+        // ── Loading spinner ──
+        const loader = document.createElement("div");
+        loader.className = "sb-avatar-loader";
+        loader.innerHTML = `
+          <div class="sb-loader-spinner"></div>
+          <div class="sb-loader-text" style="text-align:center;padding:0 10px;font-size:10px;line-height:1.4;color:#a89bfe;">
+            Translating via Gemini API...
+          </div>`;
+        card.appendChild(loader);
+        return;
+      }
+
+      if (llmError) {
+        // ── Error display ──
+        const errPanel = document.createElement("div");
+        errPanel.style.cssText = "display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;height:100%;gap:8px;padding:16px;text-align:center;";
+        errPanel.innerHTML = `
+          <div style="font-size:28px;">⚠️</div>
+          <div style="font-size:11px;font-weight:700;color:#ff6b6b;">Translation Error</div>
+          <div style="font-size:9px;color:#8a99ad;line-height:1.4;max-width:200px;">${llmError}</div>
+          <button id="sb-llm-retry" style="margin-top:6px;padding:6px 16px;background:linear-gradient(135deg,#6c63ff,#a855f7);color:#fff;border:none;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;">Retry</button>`;
+        card.appendChild(errPanel);
+
+        // Wire retry button
+        setTimeout(() => {
+          const retryBtn = document.getElementById("sb-llm-retry");
+          if (retryBtn) retryBtn.addEventListener("click", triggerLLMTranslation);
+        }, 0);
+        return;
+      }
+
+      if (llmResult && llmResult.success) {
+        // ── Results display ──
+        const resultsPanel = document.createElement("div");
+        resultsPanel.style.cssText = "display:flex;flex-direction:column;width:100%;height:100%;overflow-y:auto;padding:12px;gap:10px;";
+
+        // Gloss pills row
+        const glossHeader = document.createElement("div");
+        glossHeader.style.cssText = "font-size:9px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:0.8px;";
+        glossHeader.textContent = "ISL Gloss";
+        resultsPanel.appendChild(glossHeader);
+
+        const glossRow = document.createElement("div");
+        glossRow.style.cssText = "display:flex;flex-wrap:wrap;gap:5px;";
+        (llmResult.gloss || []).forEach((word, i) => {
+          const pill = document.createElement("span");
+          pill.style.cssText = "display:inline-flex;align-items:center;gap:3px;padding:3px 8px;background:rgba(108,99,255,0.12);border:1px solid rgba(108,99,255,0.25);border-radius:16px;font-size:10px;font-weight:700;color:#a89bfe;letter-spacing:0.3px;";
+          pill.innerHTML = `<span style='font-size:7px;color:#555;'>${i + 1}</span>${word}`;
+          glossRow.appendChild(pill);
+        });
+        resultsPanel.appendChild(glossRow);
+
+        // Motion details
+        if (llmResult.motions && llmResult.motions.length > 0) {
+          const motionHeader = document.createElement("div");
+          motionHeader.style.cssText = "font-size:9px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:0.8px;margin-top:4px;";
+          motionHeader.textContent = "Motion Details";
+          resultsPanel.appendChild(motionHeader);
+
+          llmResult.motions.forEach(motion => {
+            const motionCard = document.createElement("div");
+            motionCard.style.cssText = "background:rgba(108,99,255,0.04);border:1px solid rgba(108,99,255,0.1);border-radius:6px;padding:6px 8px;font-size:9px;line-height:1.5;color:#aaa;";
+            motionCard.innerHTML = `
+              <strong style="color:#a89bfe;font-size:10px;">${motion.gloss || '—'}</strong>
+              <div>✋ ${motion.handShape || '—'} · 📍 ${motion.location || '—'} · 🔄 ${motion.movement || '—'}</div>
+              <div>😊 ${motion.expression || '—'} · 🤲 ${motion.handedness || 'one'}-handed</div>
+              ${motion.notes ? `<div style="color:#555;font-style:italic;">${motion.notes}</div>` : ''}`;
+            resultsPanel.appendChild(motionCard);
+          });
+        }
+
+        // Elapsed time
+        const elapsedBadge = document.createElement("div");
+        elapsedBadge.style.cssText = "font-size:8px;color:#10b981;text-align:right;margin-top:2px;";
+        elapsedBadge.textContent = `Completed in ${llmResult.elapsed || '?'}s`;
+        resultsPanel.appendChild(elapsedBadge);
+
+        // Avatar placeholder
+        const avatarPlaceholder = document.createElement("div");
+        avatarPlaceholder.style.cssText = "margin-top:8px;padding:16px;border:1px dashed rgba(108,99,255,0.2);border-radius:8px;text-align:center;background:rgba(13,13,26,0.5);";
+        avatarPlaceholder.innerHTML = `
+          <div style="font-size:24px;opacity:0.6;">🤖</div>
+          <div style="font-size:10px;font-weight:700;color:#a89bfe;margin-top:4px;">Avatar rendering coming soon...</div>
+          <div style="font-size:8px;color:#444;margin-top:2px;">Three.js avatar will animate these signs</div>`;
+        resultsPanel.appendChild(avatarPlaceholder);
+
+        card.appendChild(resultsPanel);
+        return;
+      }
+
+      // ── Default: Ready to translate ──
+      const readyPanel = document.createElement("div");
+      readyPanel.style.cssText = "display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;height:100%;gap:8px;padding:16px;text-align:center;";
+      readyPanel.innerHTML = `
+        <div style="font-size:32px;">🧠</div>
+        <div style="font-size:11px;font-weight:700;color:#a89bfe;letter-spacing:0.5px;">LLM-POWERED ISL TRANSLATION</div>
+        <div style="font-size:9px;color:#8a99ad;line-height:1.3;max-width:180px;">Translate selected text to ISL using Gemini AI with structured gloss and motion data.</div>
+        <button id="sb-llm-translate" style="margin-top:6px;padding:8px 20px;background:linear-gradient(135deg,#6c63ff,#a855f7,#ff65a3);color:#fff;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;box-shadow:0 4px 12px rgba(108,99,255,0.3);letter-spacing:0.3px;">Translate with Gemini</button>`;
+      card.appendChild(readyPanel);
+
+      // Wire the translate button
+      setTimeout(() => {
+        const transBtn = document.getElementById("sb-llm-translate");
+        if (transBtn) transBtn.addEventListener("click", triggerLLMTranslation);
+      }, 0);
+    }
+
+    // ─── triggerLLMTranslation() ─────────────────────────────────────────
+    function triggerLLMTranslation() {
+      const islTextEl = document.getElementById("sb-isl-text");
+      const engTextEl = document.getElementById("sb-selected-text");
+      const text = engTextEl ? engTextEl.textContent : (islTextEl ? islTextEl.textContent : "");
+
+      if (!text || text === "—") {
+        llmError = "No text available to translate.";
+        renderLLMISLStage();
+        return;
+      }
+
+      llmLoading = true;
+      llmError = null;
+      llmResult = null;
+      renderLLMISLStage();
+
+      // Send to background service worker for Gemini processing
+      chrome.runtime.sendMessage(
+        { type: "TRANSLATE_TO_ISL", payload: { text: text } },
+        (response) => {
+          llmLoading = false;
+
+          if (chrome.runtime.lastError) {
+            llmError = chrome.runtime.lastError.message;
+            renderLLMISLStage();
+            setStatus("LLM translation failed");
+            return;
+          }
+
+          if (response && response.status === "success" && response.result) {
+            llmResult = response.result;
+            setStatus(`LLM translation complete — ${llmResult.gloss?.length || 0} signs`);
+          } else {
+            llmError = response?.message || "Translation failed — unknown error.";
+            setStatus("LLM translation failed");
+          }
+
+          renderLLMISLStage();
+        }
+      );
     }
 
     // ─── renderVideoStage() ────────────────────────────────────────────────

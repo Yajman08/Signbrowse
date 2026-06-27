@@ -59,6 +59,7 @@
   "host_permissions": [
     "<all_urls>",
     "https://media.giphy.com/*",
-    "https://*.giphy.com/*"
+    "https://*.giphy.com/*",
+    "https://generativelanguage.googleapis.com/*"
   ]
 }

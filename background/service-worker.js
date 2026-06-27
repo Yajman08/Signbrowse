@@ -19,7 +19,10 @@ try {
     "../video-providers/runway-provider.js",
     "../video-providers/kling-provider.js",
     "../video-providers/luma-provider.js",
-    "../video-providers/pika-provider.js"
+    "../video-providers/pika-provider.js",
+    "../services/gemini-service.js",
+    "../models/isl-parser.js",
+    "../controllers/translation-controller.js"
   );
 } catch (e) {
   console.warn("[SignBrowse SW] importScripts not available in current execution context:", e);
@@ -278,6 +281,24 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ status: "error", message: err.message });
       });
     return true; // async response
+  } else if (message.type === "TRANSLATE_TO_ISL") {
+    // ── Phase 8: LLM-Driven ISL Translation ──
+    const { text } = message.payload;
+    console.log(`[SignBrowse SW] TRANSLATE_TO_ISL: "${text?.substring(0, 60)}..."`);
+
+    TranslationController.process(text, {
+      onProgress: (stage, msg) => {
+        console.log(`[SignBrowse SW] Translation progress: ${stage} — ${msg}`);
+      }
+    }).then(result => {
+      console.log(`[SignBrowse SW] Translation complete: ${result.gloss?.length || 0} glosses in ${result.elapsed}s`);
+      sendResponse({ status: "success", result: result });
+    }).catch(err => {
+      console.error("[SignBrowse SW] Translation failed:", err);
+      sendResponse({ status: "error", message: err.message, errorCode: err.code || "UNKNOWN" });
+    });
+
+    return true; // async response
   }
-  // Phase 3+: handle "TRANSLATE_REQUEST" here
+  // Phase 3+: handle additional request types here
 });
