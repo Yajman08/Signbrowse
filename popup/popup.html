@@ -90,12 +90,17 @@
       </div>
 
       <!-- Avatar Placeholder -->
-      <div id="avatar-panel" class="avatar-panel hidden">
-        <div class="avatar-placeholder">
-          <div class="avatar-icon">🤖</div>
-          <div class="avatar-title">3D Avatar Panel</div>
-          <div class="avatar-subtitle">Avatar rendering coming soon...</div>
-          <div class="avatar-hint">This area will render a Three.js avatar<br>performing the ISL signs in real time.</div>
+      <!-- Avatar 3D Panel -->
+      <div id="avatar-panel" class="avatar-panel">
+        <div class="avatar-container" style="position: relative; width: 400px; height: 400px; margin: 10px auto; background: #070712; border-radius: 12px; overflow: hidden; border: 1px solid rgba(108, 99, 255, 0.25);">
+          <div id="avatar-loading" class="avatar-loading-overlay" style="position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(7, 7, 18, 0.9); z-index: 2;">
+            <div class="loading-spinner"></div>
+            <span style="color: #a89bfe; font-size: 11px; margin-top: 8px;">Loading 3D Avatar...</span>
+          </div>
+          <div id="avatar-error" class="avatar-error-overlay hidden" style="position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(7, 7, 18, 0.9); z-index: 2; color: #ff6b6b; font-size: 12px;">
+            <span>⚠️ Unable to load avatar.</span>
+          </div>
+          <canvas id="avatar-canvas" width="400" height="400" style="display: block; width: 100%; height: 100%;"></canvas>
         </div>
       </div>
     </section>
@@ -225,6 +230,18 @@
   <script src="../services/ai-provider-manager.js"></script>
   <script src="../models/isl-parser.js"></script>
   <script src="../controllers/translation-controller.js"></script>
+
+  <!-- Three.js & GLTF Loader -->
+  <script src="../avatar/three.min.js"></script>
+  <script src="../avatar/GLTFLoader.js"></script>
+
+  <!-- Avatar Modules -->
+  <script src="../avatar/scene.js"></script>
+  <script src="../avatar/camera.js"></script>
+  <script src="../avatar/renderer.js"></script>
+  <script src="../avatar/lighting.js"></script>
+  <script src="../avatar/avatarLoader.js"></script>
+  <script src="../avatar/avatarController.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

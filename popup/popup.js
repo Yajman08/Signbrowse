@@ -300,7 +300,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function hideResults() {
     if (resultsEl) resultsEl.classList.add("hidden");
-    if (avatarPanel) avatarPanel.classList.add("hidden");
   }
 
   function showResults(result) {
@@ -343,12 +342,14 @@ document.addEventListener("DOMContentLoaded", () => {
     // Show results
     resultsEl.classList.remove("hidden");
 
-    // Show avatar panel
-    if (avatarPanel) avatarPanel.classList.remove("hidden");
-
     // Log warnings if any
     if (result.warnings && result.warnings.length > 0) {
       console.warn("[Popup] Translation warnings:", result.warnings);
     }
+  }
+
+  // Initialize the 3D Avatar
+  if (typeof initializeAvatar === "function") {
+    initializeAvatar();
   }
 });
