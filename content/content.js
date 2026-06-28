@@ -500,7 +500,7 @@ if (!window.__signBrowseLoaded) {
         if (wordLabel) wordLabel.style.display = "none";
         if (signDesc) signDesc.style.display = "none";
 
-        setStatus("LLM ISL Mode — Gemini-powered translation");
+        setStatus("LLM ISL Mode — AI-powered translation");
         renderLLMISLStage();
       } else if (mode === "ai-video") {
         if (videoTabBtn) videoTabBtn.classList.add("sb-tab-active");
@@ -538,7 +538,7 @@ if (!window.__signBrowseLoaded) {
         loader.innerHTML = `
           <div class="sb-loader-spinner"></div>
           <div class="sb-loader-text" style="text-align:center;padding:0 10px;font-size:10px;line-height:1.4;color:#a89bfe;">
-            Translating via Gemini API...
+            Translating via AI...
           </div>`;
         card.appendChild(loader);
         return;
@@ -628,8 +628,8 @@ if (!window.__signBrowseLoaded) {
       readyPanel.innerHTML = `
         <div style="font-size:32px;">🧠</div>
         <div style="font-size:11px;font-weight:700;color:#a89bfe;letter-spacing:0.5px;">LLM-POWERED ISL TRANSLATION</div>
-        <div style="font-size:9px;color:#8a99ad;line-height:1.3;max-width:180px;">Translate selected text to ISL using Gemini AI with structured gloss and motion data.</div>
-        <button id="sb-llm-translate" style="margin-top:6px;padding:8px 20px;background:linear-gradient(135deg,#6c63ff,#a855f7,#ff65a3);color:#fff;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;box-shadow:0 4px 12px rgba(108,99,255,0.3);letter-spacing:0.3px;">Translate with Gemini</button>`;
+        <div style="font-size:9px;color:#8a99ad;line-height:1.3;max-width:180px;">Translate selected text to ISL using AI with structured gloss and motion data.</div>
+        <button id="sb-llm-translate" style="margin-top:6px;padding:8px 20px;background:linear-gradient(135deg,#6c63ff,#a855f7,#ff65a3);color:#fff;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;box-shadow:0 4px 12px rgba(108,99,255,0.3);letter-spacing:0.3px;">Translate with AI</button>`;
       card.appendChild(readyPanel);
 
       // Wire the translate button

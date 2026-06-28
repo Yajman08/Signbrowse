@@ -19,6 +19,9 @@ document.addEventListener("DOMContentLoaded", () => {
   //  1. API KEY MANAGEMENT
   // ═══════════════════════════════════════════════════════════════════════════
 
+  const providerSelect = document.getElementById("ai-provider");
+  const providerStatus = document.getElementById("provider-status");
+
   const keyInputs = {
     geminiApiKey: document.getElementById("gemini-key"),
     veoApiKey: document.getElementById("veo-key"),
@@ -41,9 +44,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const saveBtn = document.getElementById("save-keys-btn");
 
-  // Load saved credentials
+  // Load saved credentials & provider
   if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
-    chrome.storage.local.get(Object.keys(keyInputs), (saved) => {
+    chrome.storage.local.get([...Object.keys(keyInputs), "aiProvider"], (saved) => {
+      // Load keys
       Object.keys(keyInputs).forEach(key => {
         if (saved[key] && keyInputs[key]) {
           keyInputs[key].value = saved[key];
@@ -53,8 +57,13 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       });
 
-      // Update translate button state based on Gemini key
+      // Load provider selection
+      if (saved.aiProvider && providerSelect) {
+        providerSelect.value = saved.aiProvider;
+      }
+      
       updateTranslateButtonState();
+      checkOllamaStatus();
     });
   }
 
@@ -70,30 +79,70 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
+  // Live status check for Ollama when selected
+  async function checkOllamaStatus() {
+    if (!providerSelect || !providerStatus) return;
+    if (providerSelect.value === "ollama") {
+      providerStatus.textContent = "Checking...";
+      providerStatus.className = "provider-status checking";
+      if (typeof OllamaService !== "undefined") {
+        const running = await OllamaService.isAvailable();
+        if (running) {
+          providerStatus.textContent = "Online";
+          providerStatus.className = "provider-status online";
+        } else {
+          providerStatus.textContent = "Offline";
+          providerStatus.className = "provider-status offline";
+        }
+      }
+    } else {
+      providerStatus.textContent = "";
+      providerStatus.className = "provider-status";
+    }
+  }
+
+  if (providerSelect) {
+    providerSelect.addEventListener("change", () => {
+      updateTranslateButtonState();
+      checkOllamaStatus();
+    });
+  }
+
   // Save Settings
   saveBtn.addEventListener("click", () => {
-    const updatedKeys = {};
+    const updatedSettings = {};
     Object.keys(keyInputs).forEach(key => {
       if (keyInputs[key]) {
-        updatedKeys[key] = keyInputs[key].value.trim();
+        updatedSettings[key] = keyInputs[key].value.trim();
       }
     });
 
+    if (providerSelect) {
+      updatedSettings.aiProvider = providerSelect.value;
+    }
+
     if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
-      chrome.storage.local.set(updatedKeys, () => {
+      chrome.storage.local.set(updatedSettings, () => {
         console.log("[SignBrowse Popup] Settings saved.");
 
         // Refresh badge displays
         Object.keys(keyInputs).forEach(key => {
-          updateBadge(key, !!updatedKeys[key]);
+          updateBadge(key, !!updatedSettings[key]);
         });
 
-        // Clear GeminiService cache so it picks up the new key
+        // Clear service caches
         if (typeof GeminiService !== "undefined" && GeminiService.clearCache) {
           GeminiService.clearCache();
         }
+        if (typeof AIProviderManager !== "undefined") {
+          AIProviderManager.clearCache();
+          if (updatedSettings.aiProvider) {
+            AIProviderManager.setProvider(updatedSettings.aiProvider);
+          }
+        }
 
         updateTranslateButtonState();
+        checkOllamaStatus();
 
         // Button Save Feedback
         const originalText = saveBtn.textContent;
@@ -136,11 +185,17 @@ document.addEventListener("DOMContentLoaded", () => {
   const avatarPanel = document.getElementById("avatar-panel");
 
   function updateTranslateButtonState() {
-    const geminiKey = keyInputs.geminiApiKey?.value?.trim();
-    if (!geminiKey) {
-      translateBtn.title = "Set your Gemini API key first";
+    const provider = providerSelect ? providerSelect.value : "ollama";
+    
+    if (provider === "gemini") {
+      const geminiKey = keyInputs.geminiApiKey?.value?.trim();
+      if (!geminiKey) {
+        translateBtn.title = "Set your Gemini API key first";
+      } else {
+        translateBtn.title = "Translate text to ISL using Gemini";
+      }
     } else {
-      translateBtn.title = "Translate text to ISL using Gemini";
+      translateBtn.title = "Translate text to ISL using local Ollama (llama3.2)";
     }
   }
 
@@ -152,11 +207,20 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-    // Check API key
-    const geminiKey = keyInputs.geminiApiKey?.value?.trim();
-    if (!geminiKey) {
-      showError("Gemini API key is not configured. Please add it in API Settings below and click Save.");
-      return;
+    const provider = providerSelect ? providerSelect.value : "ollama";
+
+    // Check Gemini API key if Gemini is selected
+    if (provider === "gemini") {
+      const geminiKey = keyInputs.geminiApiKey?.value?.trim();
+      if (!geminiKey) {
+        showError("Gemini API key is not configured. Please add it in API Settings below and click Save.");
+        return;
+      }
+    }
+
+    // Set provider in manager before running translation just in case
+    if (typeof AIProviderManager !== "undefined") {
+      await AIProviderManager.setProvider(provider);
     }
 
     await runTranslation(text);
@@ -174,14 +238,18 @@ document.addEventListener("DOMContentLoaded", () => {
     // Reset UI states
     hideError();
     hideResults();
-    showLoading("Sending to Gemini API...");
+    
+    const provider = providerSelect ? providerSelect.value : "ollama";
+    const providerLabel = provider === "gemini" ? "Gemini API" : "Ollama (Local)";
+    
+    showLoading(`Translating via ${providerLabel}...`);
     translateBtn.disabled = true;
 
     try {
-      // Use TranslationController which calls GeminiService + ISLParser
+      // Use TranslationController which calls AIProviderManager + ISLParser
       const result = await TranslationController.process(text, {
         onStart: () => {
-          console.log("[Popup] Translation started");
+          console.log(`[Popup] Translation started via ${provider}`);
         },
         onProgress: (stage, message) => {
           if (loadingText) loadingText.textContent = message;

@@ -72,7 +72,6 @@ body {
   0%, 100% { opacity: 1; }
   50%       { opacity: 0.4; }
 }
-
 /* ══════════════════════════════════════════════════════════════════════════════
  *  TRANSLATION PANEL
  * ══════════════════════════════════════════════════════════════════════════════ */
@@ -81,7 +80,58 @@ body {
   border-bottom: 1px solid rgba(255, 255, 255, 0.04);
 }
 
-/* ── Input Area ──────────────────────────────────────────────────────────── */
+/* ── Provider Selector ────────────────────────────────────────────────────── */
+.provider-selector {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  background: rgba(108, 99, 255, 0.04);
+  border: 1px solid rgba(108, 99, 255, 0.15);
+  border-radius: 8px;
+  padding: 6px 10px;
+}
+
+.provider-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: #a89bfe;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+.provider-select {
+  flex-grow: 1;
+  background: #070712;
+  border: 1px solid rgba(108, 99, 255, 0.2);
+  border-radius: 6px;
+  color: #eee;
+  padding: 4px 8px;
+  font-size: 11px;
+  outline: none;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.provider-select:focus {
+  border-color: #6c63ff;
+}
+
+.provider-status {
+  font-size: 8px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+  margin-left: auto;
+}
+
+.provider-status.checking { color: #a89bfe; }
+.provider-status.online { color: #10b981; }
+.provider-status.offline { color: #ff6b6b; }
+
+
 .translate-input-wrap {
   display: flex;
   flex-direction: column;

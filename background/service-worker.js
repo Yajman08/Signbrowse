@@ -21,6 +21,8 @@ try {
     "../video-providers/luma-provider.js",
     "../video-providers/pika-provider.js",
     "../services/gemini-service.js",
+    "../services/ollama-service.js",
+    "../services/ai-provider-manager.js",
     "../models/isl-parser.js",
     "../controllers/translation-controller.js"
   );

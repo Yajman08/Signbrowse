@@ -65,15 +65,19 @@ const ISLParser = (() => {
         return g.toUpperCase();
       });
     }
-
     // ── Validate motions array ──
+    if (!data.motions && data.motion) {
+      warnings.push("Found 'motion' array instead of 'motions' — mapping to 'motions'.");
+      data.motions = data.motion;
+    }
+
     if (!data.motions) {
       // Create empty motions if gloss exists (graceful degradation)
       if (data.gloss && Array.isArray(data.gloss)) {
         warnings.push("Missing 'motions' array — generating defaults from gloss.");
         data.motions = data.gloss.map(g => _defaultMotion(g));
       } else {
-        errors.push("Missing 'motions' array.");
+        errors.push("Missing 'motions' or 'motion' array.");
       }
     } else if (!Array.isArray(data.motions)) {
       errors.push("'motions' must be an array.");

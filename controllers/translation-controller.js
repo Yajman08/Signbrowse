@@ -3,9 +3,11 @@
  * ─────────────────────────────────────────────────────────────────────────────
  * Orchestrates the full ISL translation pipeline:
  *   1. Receives raw English text
- *   2. Calls GeminiService.translate(text)
+ *   2. Routes to the active AI provider via AIProviderManager.translate(text)
  *   3. Validates result through ISLParser.validate()
  *   4. Returns validated result with status callbacks
+ *
+ * Provider-agnostic — works with Gemini, Ollama, or any future provider.
  *
  * Designed for use from both popup.js and the content-script overlay.
  * In the content script context, it delegates to the background service worker
@@ -27,7 +29,7 @@ const TranslationController = (() => {
    * @param {Function} callbacks.onProgress — Called with (stage, message) during processing.
    * @param {Function} callbacks.onComplete — Called with the final result.
    * @param {Function} callbacks.onError — Called with error details.
-   * @returns {Promise<{success, gloss, motions, raw, errors, warnings, elapsed}>}
+   * @returns {Promise<{success, gloss, motions, raw, errors, warnings, elapsed, provider}>}
    */
   async function process(text, callbacks = {}) {
     const { onStart, onProgress, onError, onComplete } = callbacks;
@@ -45,58 +47,90 @@ const TranslationController = (() => {
       const cleanText = text.trim();
       console.log(`[TranslationController] Processing: "${cleanText.substring(0, 60)}..."`);
 
-      // ── Stage 2: Gemini API Call ──
-      if (onProgress) onProgress("api_call", "Sending to Gemini API...");
+      // ── Stage 2: Route to active AI provider ──
+      const providerManager = _getAIProviderManager();
+      let providerName = "unknown";
 
-      // Check if GeminiService is available
-      const geminiService = _getGeminiService();
-      if (!geminiService) {
-        throw { code: "SERVICE_UNAVAILABLE", message: "GeminiService module is not loaded." };
-      }
+      if (providerManager) {
+        const info = await providerManager.getProviderInfo();
+        providerName = info.name || info.id;
+        if (onProgress) onProgress("api_call", `Sending to ${providerName}...`);
 
-      const rawResult = await geminiService.translate(cleanText);
+        const rawResult = await providerManager.translate(cleanText);
 
-      // ── Stage 3: Parse & Validate ──
-      if (onProgress) onProgress("parse", "Parsing ISL response...");
+        // ── Stage 3: Parse & Validate ──
+        if (onProgress) onProgress("parse", "Parsing ISL response...");
 
-      const parser = _getISLParser();
-      let validation;
-      if (parser) {
-        validation = parser.validate(rawResult);
-      } else {
-        // If parser not available, do basic validation
-        validation = {
-          valid: !!(rawResult && rawResult.gloss),
-          data: rawResult,
-          errors: [],
-          warnings: ["ISLParser not loaded — skipping full validation."]
+        const parser = _getISLParser();
+        let validation;
+        if (parser) {
+          validation = parser.validate(rawResult);
+        } else {
+          validation = {
+            valid: !!(rawResult && rawResult.gloss),
+            data: rawResult,
+            errors: [],
+            warnings: ["ISLParser not loaded — skipping full validation."]
+          };
+        }
+
+        const elapsed = ((performance.now() - startTime) / 1000).toFixed(2);
+
+        const result = {
+          success: true,
+          gloss: validation.data?.gloss || [],
+          motions: validation.data?.motions || [],
+          raw: rawResult,
+          errors: validation.errors || [],
+          warnings: validation.warnings || [],
+          elapsed: elapsed,
+          provider: providerName,
+          inputText: cleanText,
+          timestamp: new Date().toISOString()
         };
+
+        if (validation.errors.length > 0) {
+          console.warn("[TranslationController] Validation had errors:", validation.errors);
+          result.success = validation.valid;
+        }
+
+        console.log(`[TranslationController] Done in ${elapsed}s via ${providerName} — ${result.gloss.length} glosses`);
+
+        if (onComplete) onComplete(result);
+        return result;
+
+      } else {
+        // Fallback: try GeminiService directly (backward compatibility)
+        const geminiService = _resolve("GeminiService");
+        if (geminiService) {
+          providerName = "Gemini (fallback)";
+          if (onProgress) onProgress("api_call", "Sending to Gemini API...");
+          const rawResult = await geminiService.translate(cleanText);
+
+          if (onProgress) onProgress("parse", "Parsing ISL response...");
+          const parser = _getISLParser();
+          const validation = parser ? parser.validate(rawResult) : { valid: true, data: rawResult, errors: [], warnings: [] };
+          const elapsed = ((performance.now() - startTime) / 1000).toFixed(2);
+
+          const result = {
+            success: true,
+            gloss: validation.data?.gloss || [],
+            motions: validation.data?.motions || [],
+            raw: rawResult,
+            errors: validation.errors || [],
+            warnings: validation.warnings || [],
+            elapsed: elapsed,
+            provider: providerName,
+            inputText: cleanText,
+            timestamp: new Date().toISOString()
+          };
+
+          if (onComplete) onComplete(result);
+          return result;
+        }
+
+        throw { code: "SERVICE_UNAVAILABLE", message: "No AI provider available. AIProviderManager and GeminiService are both missing." };
       }
-
-      const elapsed = ((performance.now() - startTime) / 1000).toFixed(2);
-
-      const result = {
-        success: true,
-        gloss: validation.data?.gloss || [],
-        motions: validation.data?.motions || [],
-        raw: rawResult,
-        errors: validation.errors || [],
-        warnings: validation.warnings || [],
-        elapsed: elapsed,
-        inputText: cleanText,
-        timestamp: new Date().toISOString()
-      };
-
-      // Log any validation issues
-      if (validation.errors.length > 0) {
-        console.warn("[TranslationController] Validation had errors:", validation.errors);
-        result.success = validation.valid;
-      }
-
-      console.log(`[TranslationController] Done in ${elapsed}s — ${result.gloss.length} glosses`);
-
-      if (onComplete) onComplete(result);
-      return result;
 
     } catch (error) {
       const elapsed = ((performance.now() - startTime) / 1000).toFixed(2);
@@ -109,6 +143,7 @@ const TranslationController = (() => {
         warnings: [],
         errorCode: error.code || "UNKNOWN",
         elapsed: elapsed,
+        provider: "unknown",
         inputText: text,
         timestamp: new Date().toISOString()
       };
@@ -122,12 +157,12 @@ const TranslationController = (() => {
 
 
   /**
-   * Process text via the background service worker (for use in content scripts / popup).
+   * Process text via the background service worker (for content scripts / popup).
    * Sends a TRANSLATE_TO_ISL message and waits for the response.
    *
    * @param {string} text — English sentence to translate.
    * @param {Object} callbacks — Optional progress callbacks.
-   * @returns {Promise<{success, gloss, motions, raw, errors, warnings, elapsed}>}
+   * @returns {Promise<{success, gloss, motions, raw, errors, warnings, elapsed, provider}>}
    */
   function processViaBackground(text, callbacks = {}) {
     const { onStart, onProgress, onError, onComplete } = callbacks;
@@ -146,6 +181,7 @@ const TranslationController = (() => {
           warnings: [],
           errorCode: "RUNTIME_UNAVAILABLE",
           elapsed: "0",
+          provider: "unknown",
           inputText: text,
           timestamp: new Date().toISOString()
         };
@@ -170,6 +206,7 @@ const TranslationController = (() => {
               warnings: [],
               errorCode: "MESSAGE_ERROR",
               elapsed: "0",
+              provider: "unknown",
               inputText: text,
               timestamp: new Date().toISOString()
             };
@@ -192,6 +229,7 @@ const TranslationController = (() => {
               warnings: [],
               errorCode: response?.errorCode || "BACKGROUND_ERROR",
               elapsed: "0",
+              provider: "unknown",
               inputText: text,
               timestamp: new Date().toISOString()
             };
@@ -206,17 +244,18 @@ const TranslationController = (() => {
 
   // ── Helpers ────────────────────────────────────────────────────────────
 
-  function _getGeminiService() {
-    if (typeof GeminiService !== "undefined") return GeminiService;
-    if (typeof window !== "undefined" && window.GeminiService) return window.GeminiService;
-    if (typeof self !== "undefined" && self.GeminiService) return self.GeminiService;
-    return null;
+  function _getAIProviderManager() {
+    return _resolve("AIProviderManager");
   }
 
   function _getISLParser() {
-    if (typeof ISLParser !== "undefined") return ISLParser;
-    if (typeof window !== "undefined" && window.ISLParser) return window.ISLParser;
-    if (typeof self !== "undefined" && self.ISLParser) return self.ISLParser;
+    return _resolve("ISLParser");
+  }
+
+  function _resolve(name) {
+    if (typeof globalThis !== "undefined" && globalThis[name]) return globalThis[name];
+    if (typeof window !== "undefined" && window[name]) return window[name];
+    if (typeof self !== "undefined" && self[name]) return self[name];
     return null;
   }
 

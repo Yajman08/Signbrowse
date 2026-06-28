@@ -28,6 +28,16 @@
     <section class="translation-panel">
       <h2 class="section-title">Translate to ISL</h2>
 
+      <!-- AI Provider Selector -->
+      <div class="provider-selector">
+        <label class="provider-label" for="ai-provider">AI Provider</label>
+        <select id="ai-provider" class="provider-select">
+          <option value="ollama" selected>🦙 Ollama (Local · llama3.2)</option>
+          <option value="gemini">✨ Google Gemini (Cloud)</option>
+        </select>
+        <span id="provider-status" class="provider-status"></span>
+      </div>
+
       <!-- Input Area -->
       <div class="translate-input-wrap">
         <textarea
@@ -38,7 +48,7 @@
         ></textarea>
         <button id="translate-btn" class="translate-btn">
           <span class="translate-btn-icon">🧠</span>
-          <span class="translate-btn-text">Translate with Gemini</span>
+          <span class="translate-btn-text">Translate to ISL</span>
         </button>
       </div>
 
@@ -211,6 +221,8 @@
 
   <!-- Scripts: load service modules, then popup logic -->
   <script src="../services/gemini-service.js"></script>
+  <script src="../services/ollama-service.js"></script>
+  <script src="../services/ai-provider-manager.js"></script>
   <script src="../models/isl-parser.js"></script>
   <script src="../controllers/translation-controller.js"></script>
   <script src="popup.js"></script>
