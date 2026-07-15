@@ -23,6 +23,13 @@ const AIProviderManager = (() => {
 
   // ── Provider Registry ──────────────────────────────────────────────────
   const PROVIDERS = {
+    nvidia: {
+      id: "nvidia",
+      name: "NVIDIA (Cloud)",
+      description: "Cloud API · meta/llama-3.1-8b-instruct",
+      requiresKey: true,
+      icon: "🟢"
+    },
     gemini: {
       id: "gemini",
       name: "Google Gemini",
@@ -37,18 +44,10 @@ const AIProviderManager = (() => {
       requiresKey: false,
       icon: "🦙"
     }
-    // Future:
-    // groq: {
-    //   id: "groq",
-    //   name: "Groq",
-    //   description: "Cloud API · fast inference",
-    //   requiresKey: true,
-    //   icon: "⚡"
-    // }
   };
 
   // Default provider
-  const DEFAULT_PROVIDER = "ollama";
+  const DEFAULT_PROVIDER = "nvidia";
 
   // In-memory cache
   let _activeProvider = null;
@@ -138,24 +137,53 @@ const AIProviderManager = (() => {
    */
   async function translate(text) {
     const providerId = await getProvider();
-    console.log(`[AIProviderManager] Routing to provider: ${providerId}`);
+    console.log(`[AIProviderManager] ▶ Routing to provider: "${providerId}"`);
 
     switch (providerId) {
+      case "nvidia": {
+        const service = _resolve("NvidiaLLMService");
+        console.log("[AIProviderManager]   NvidiaLLMService resolved:", !!service);
+        if (!service) throw new Error("NvidiaLLMService module is not loaded. Check that services/nvidiaLLM.js is imported.");
+        try {
+          const result = await service.translate(text);
+          console.log("[AIProviderManager] ✔ NVIDIA translate() returned successfully");
+          return result;
+        } catch (err) {
+          console.error("[AIProviderManager] ✖ NVIDIA translate() threw:", err.code, err.message);
+          throw err;
+        }
+      }
+
       case "gemini": {
         const service = _resolve("GeminiService");
+        console.log("[AIProviderManager]   GeminiService resolved:", !!service);
         if (!service) throw new Error("GeminiService module is not loaded.");
-        return service.translate(text);
+        try {
+          const result = await service.translate(text);
+          console.log("[AIProviderManager] ✔ Gemini translate() returned successfully");
+          return result;
+        } catch (err) {
+          console.error("[AIProviderManager] ✖ Gemini translate() threw:", err.code, err.message);
+          throw err;
+        }
       }
 
       case "ollama": {
         const service = _resolve("OllamaService");
+        console.log("[AIProviderManager]   OllamaService resolved:", !!service);
         if (!service) throw new Error("OllamaService module is not loaded.");
-        return service.translate(text);
+        try {
+          const result = await service.translate(text);
+          console.log("[AIProviderManager] ✔ Ollama translate() returned successfully");
+          return result;
+        } catch (err) {
+          console.error("[AIProviderManager] ✖ Ollama translate() threw:", err.code, err.message);
+          throw err;
+        }
       }
 
-      // case "groq": { ... }
-
       default:
+        console.error(`[AIProviderManager] ✖ Unknown provider: "${providerId}"`);
         throw new Error(`Unknown AI provider: "${providerId}". Available: ${Object.keys(PROVIDERS).join(", ")}`);
     }
   }

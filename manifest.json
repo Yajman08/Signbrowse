@@ -28,6 +28,18 @@
     {
       "matches": ["<all_urls>"],
       "js": [
+        "avatar/three.min.js",
+        "avatar/fflate.min.js",
+        "avatar/GLTFLoader.js",
+        "avatar/FBXLoader.js",
+        "avatar/scene.js",
+        "avatar/camera.js",
+        "avatar/renderer.js",
+        "avatar/lighting.js",
+        "avatar/avatarLoader.js",
+        "avatar/avatarController.js",
+        "avatar/gestureLibrary.js",
+        "avatar/gestureMapper.js",
         "engine/isl-dictionary.js",
         "engine/grammar.js",
         "engine/translator.js",
@@ -40,6 +52,8 @@
         "video-providers/kling-provider.js",
         "video-providers/luma-provider.js",
         "video-providers/pika-provider.js",
+        "video-providers/json2video-provider.js",
+        "services/json2videoService.js",
         "engine/prompt-generator/video-request.js",
         "engine/prompt-generator/prompt-generator.js",
         "content/content.js"
@@ -61,5 +75,16 @@
     "https://media.giphy.com/*",
     "https://*.giphy.com/*",
     "https://generativelanguage.googleapis.com/*"
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "assets/*",
+        "assets/animations/*"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
+    }
   ]
 }

@@ -43,3 +43,7 @@ pnpm-debug.log*
 
 # Crash reports
 crashes
+
+# Downloaded source repositories
+VirtualISLInterpreter-main/
+

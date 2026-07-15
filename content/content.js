@@ -1,169 +1,104 @@
 /**
- * CONTENT SCRIPT — content/content.js
+ * SIGNBROWSE CONTENT SCRIPT — content/content.js
  * ─────────────────────────────────────────────────────────────────────────────
- * Injected into webpages. Handles:
- *   Phase 1: Message listener, draggable overlay, selected text display.
- *   Phase 4: Sentence restructuring using the ISL grammar conversion engine.
- *   Phase 6: Generative AI Prompt Preview Dashboard & Video Simulator player.
- *            Keeps word-by-word track translation engine with tabs to toggle modes.
+ * Injects and manages the 3D Translation Console overlay directly on the webpage.
  *
- * Depends on (loaded before this script):
- *   - engine/isl-dictionary.js            → window.ISL_DICTIONARY
- *   - engine/grammar.js                   → window.SignBrowseGrammar
- *   - engine/translator.js                → window.SignBrowseTranslator
- *   - engine/prompt-generator/signer-profile.js   → window.SignBrowseSignerProfiles
- *   - engine/prompt-generator/prompt-templates.js → window.SignBrowsePromptTemplates
- *   - engine/prompt-generator/prompt-builder.js   → window.SignBrowsePromptBuilder
- *   - engine/prompt-generator/video-request.js     → window.SignBrowseVideoRequest
- *   - engine/prompt-generator/prompt-generator.js → window.SignBrowsePromptGenerator
+ * Workflow:
+ *   1. Listen for "SHOW_SIGN_OVERLAY" message.
+ *   2. Create a draggable, resizable floating window near the cursor/selected text.
+ *   3. Automatically trigger the Ollama/Gemini translation pipeline.
+ *   4. Render the 3D avatar using Three.js inside the window's viewport.
+ *   5. Provide playback controls (Play, Pause, Reset) and live status tracking.
  */
 
-if (!window.__signBrowseLoaded) {
-  window.__signBrowseLoaded = true;
+if (typeof window.SignBrowseOverlay === "undefined") {
 
   const SignBrowseOverlay = (() => {
 
-    // ── State ──────────────────────────────────────────────────────────────
     let overlayEl = null;
     let isDragging = false;
     let dragOffsetX = 0;
     let dragOffsetY = 0;
+    let isMinimized = false;
+    let currentGlossWords = [];
 
-    // Translation playback state
-    let tokens = [];           // Array of translated tokens from translator.js
-    let currentTokenIndex = 0;
-    let isPaused = false;
-    let playbackSpeed = 2000;  // ms scale mapping: 1000 = Fast, 2000 = Normal, 3000 = Slow
-
-    // Phase 6 Generative AI state
-    let selectedModel = 'google-veo';
-    let selectedSigner = 'aanya';
-    let activeMode = 'llm-isl'; // 'llm-isl', 'ai-video', or 'word'
-    let llmResult = null;
-    let llmLoading = false;
-    let llmError = null;
-    let generatedVideoData = null;
-    let isGenerating = false;
-    let generationProgress = 0;
-    let generationStatus = '';
-    let wordPlaybackTimeout = null;
-    let fingerspellInterval = null;
-
-    let cachedApiStatus = "disconnected";
-
-    function updateCachedApiStatus() {
-      return new Promise((resolve) => {
-        if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
-          chrome.storage.local.get([
-            "veoApiKey",
-            "runwayApiKey",
-            "klingApiKey",
-            "lumaApiKey",
-            "pikaApiKey"
-          ], (keys) => {
-            const hasKeys = keys.veoApiKey || keys.runwayApiKey || keys.klingApiKey || keys.lumaApiKey || keys.pikaApiKey;
-            cachedApiStatus = hasKeys ? "connected" : "disconnected";
-            if (typeof window !== "undefined") {
-              window.__signBrowseApiStatus = cachedApiStatus;
-            }
-            resolve();
-          });
-        } else {
-          cachedApiStatus = "disconnected";
-          if (typeof window !== "undefined") {
-            window.__signBrowseApiStatus = cachedApiStatus;
-          }
-          resolve();
-        }
-      });
-    }
-
-    // ─── init() ────────────────────────────────────────────────────────────
+    /**
+     * Initializes the content script message listeners.
+     */
     function init() {
-      updateCachedApiStatus();
+      console.log("[SignBrowse Content] Initializing content script overlay...");
 
+      // Listen for show overlay messages from the background service worker
       chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (message.type === "SHOW_SIGN_OVERLAY") {
-          updateCachedApiStatus().then(() => {
-            showOverlay(message.payload.text);
-          });
-          sendResponse({ status: "OK" });
-        } else if (message.type === "UPDATE_API_STATUS") {
-          updateCachedApiStatus().then(() => {
-            if (overlayEl && !overlayEl.classList.contains("sb-hidden") && activeMode === "ai-video" && !isGenerating && !generatedVideoData) {
-              renderVideoStage();
+          const text = message.payload.text;
+          
+          const existingOverlay = document.getElementById("signbrowse-overlay");
+          if (existingOverlay) {
+            console.log("[SignBrowse Content] Overlay already exists. Updating translation in place.");
+            
+            // Update selected English text
+            const selectedTextEl = existingOverlay.querySelector(".sb-selected-text");
+            if (selectedTextEl) {
+              selectedTextEl.textContent = text;
             }
-          });
-          sendResponse({ status: "OK" });
-        }
-      });
+            
+            // Reset gloss output
+            const glossOutput = existingOverlay.querySelector("#sb-gloss-output");
+            if (glossOutput) {
+              glossOutput.innerHTML = '<span class="sb-placeholder">Translating...</span>';
+            }
+            
+            // Reset avatar pose
+            if (window.AvatarController) {
+              window.AvatarController.resetPose();
+            }
+            
+            // Trigger translation again (without reloading Three.js)
+            triggerTranslation(text, existingOverlay);
+            
+            sendResponse({ status: "updated" });
+            return true;
+          }
 
-      console.log("[SignBrowse] Content script ready (Phase 8 — LLM-Driven ISL Pipeline).");
+          showOverlay(text);
+          sendResponse({ status: "success" }); // Cleanly respond to close the message port
+        }
+        return true;
+      });
     }
 
-    // ─── showOverlay(text) ─────────────────────────────────────────────────
+    /**
+     * Creates and displays the floating translation window.
+     */
     function showOverlay(text) {
-      // 1. Process Grammar Conversion first
-      const grammarEngine = window.SignBrowseGrammar;
-      let islText = "";
-      if (grammarEngine) {
-        islText = grammarEngine.generateISLSequence(text);
-      } else {
-        console.warn("[SignBrowse] Grammar engine not loaded.");
-        islText = text.toUpperCase();
-      }
+      // 7. Log overlay creation
+      console.log("[SignBrowse Content] Overlay Created");
 
-      // 2. Translate restructured sentence
-      const translator = window.SignBrowseTranslator;
-      if (!translator) {
-        console.error("[SignBrowse] Translator not loaded.");
-        return;
-      }
-
-      tokens = translator.translateText(islText);
-      currentTokenIndex = 0;
-      isPaused = false;
-
-      // Reset Generative Video states
-      generatedVideoData = null;
-      isGenerating = false;
-      generationProgress = 0;
-      generationStatus = "";
-
-      if (overlayEl) {
-        updateSelectedText(text, islText);
-        updatePromptText(islText);
-        overlayEl.classList.remove("sb-hidden");
-        overlayEl.classList.add("sb-visible");
-
-        if (activeMode === "llm-isl") {
-          renderLLMISLStage();
-        } else if (activeMode === "ai-video") {
-          renderVideoStage();
-        } else {
-          startPlayback();
-        }
-        return;
-      }
-
-      overlayEl = buildOverlayDOM(text, islText);
+      // 1. Build the DOM structure
+      overlayEl = buildOverlayDOM(text);
       document.body.appendChild(overlayEl);
+      console.log("[SignBrowse Content] Overlay Added to DOM");
 
+      // 2. Position the window near the mouse or selection
+      positionOverlay(overlayEl);
+
+      // 3. Attach drag, control, and keyboard handlers
       attachDragHandlers(overlayEl);
-      attachCloseHandler(overlayEl);
+      attachControlHandlers(overlayEl);
+      attachKeyboardHandlers();
 
-      requestAnimationFrame(() => {
-        overlayEl.classList.add("sb-visible");
-        switchMode(activeMode); // initial render of active mode stage
-      });
+      // 4. Trigger the translation pipeline & load 3D avatar
+      runTranslationAndRender(text, overlayEl);
     }
 
-    // ─── buildOverlayDOM(originalText, islText) ────────────────────────────
-    function buildOverlayDOM(originalText, islText) {
+    /**
+     * Builds the floating window DOM elements.
+     */
+    function buildOverlayDOM(originalText) {
       const wrapper = document.createElement("div");
       wrapper.id = "signbrowse-overlay";
-      wrapper.setAttribute("role", "dialog");
-      wrapper.setAttribute("aria-label", "SignBrowse Sign Language Overlay");
+      wrapper.className = "sb-overlay-console";
 
       // ── Header ──
       const header = document.createElement("div");
@@ -173,1381 +108,165 @@ if (!window.__signBrowseLoaded) {
       logo.className = "sb-logo";
       logo.textContent = "🤟 SignBrowse";
 
+      const headerControls = document.createElement("div");
+      headerControls.className = "sb-header-controls";
+
+      const minBtn = document.createElement("button");
+      minBtn.className = "sb-min-btn";
+      minBtn.title = "Minimize Console";
+      minBtn.textContent = "🗕";
+
       const closeBtn = document.createElement("button");
       closeBtn.className = "sb-close-btn";
-      closeBtn.setAttribute("aria-label", "Close");
+      closeBtn.title = "Close Console";
       closeBtn.textContent = "✕";
 
+      headerControls.appendChild(minBtn);
+      headerControls.appendChild(closeBtn);
       header.appendChild(logo);
-      header.appendChild(closeBtn);
+      header.appendChild(headerControls);
       wrapper.appendChild(header);
 
-      // ── Mode Tabs ──
-      const tabsRow = document.createElement("div");
-      tabsRow.className = "sb-tabs-row";
+      // ── Console Body (Contains everything else) ──
+      const consoleBody = document.createElement("div");
+      consoleBody.className = "sb-console-body";
+      consoleBody.id = "sb-console-body";
 
-      const llmTabBtn = document.createElement("button");
-      llmTabBtn.className = "sb-tab-btn sb-tab-active";
-      llmTabBtn.id = "sb-tab-llm";
-      llmTabBtn.textContent = "🧠 LLM ISL";
+      // ── Selected English Text ──
+      const textPanel = document.createElement("div");
+      textPanel.className = "sb-panel sb-input-panel";
+      textPanel.innerHTML = `
+        <div class="sb-panel-label">English Input</div>
+        <div class="sb-selected-text">${originalText}</div>
+      `;
+      consoleBody.appendChild(textPanel);
 
-      const videoTabBtn = document.createElement("button");
-      videoTabBtn.className = "sb-tab-btn";
-      videoTabBtn.id = "sb-tab-video";
-      videoTabBtn.textContent = "🤟 AI Video";
+      // ── ISL Gloss Output ──
+      const glossPanel = document.createElement("div");
+      glossPanel.className = "sb-panel sb-output-panel";
+      glossPanel.innerHTML = `
+        <div class="sb-panel-label">ISL Gloss Sequence</div>
+        <div id="sb-gloss-output" class="sb-gloss-pills">
+          <span class="sb-placeholder">Waiting for translation...</span>
+        </div>
+      `;
+      consoleBody.appendChild(glossPanel);
 
-      const wordTabBtn = document.createElement("button");
-      wordTabBtn.className = "sb-tab-btn";
-      wordTabBtn.id = "sb-tab-word";
-      wordTabBtn.textContent = "📖 Word Lookup";
+      // ── Main Three.js Viewport ──
+      const viewportPanel = document.createElement("div");
+      viewportPanel.className = "sb-panel sb-viewport-panel";
 
-      tabsRow.appendChild(llmTabBtn);
-      tabsRow.appendChild(videoTabBtn);
-      tabsRow.appendChild(wordTabBtn);
-      wrapper.appendChild(tabsRow);
+      const viewportContainer = document.createElement("div");
+      viewportContainer.className = "sb-viewport-container";
+      viewportContainer.id = "sb-viewport-container";
 
-      // Tab Switch Event Listeners
-      llmTabBtn.addEventListener("click", () => {
-        switchMode("llm-isl");
-      });
-      videoTabBtn.addEventListener("click", () => {
-        switchMode("ai-video");
-      });
-      wordTabBtn.addEventListener("click", () => {
-        switchMode("word");
-      });
+      // Loading Overlay
+      const loadingOverlay = document.createElement("div");
+      loadingOverlay.className = "sb-viewport-overlay";
+      loadingOverlay.id = "sb-avatar-loading";
+      loadingOverlay.innerHTML = `
+        <div class="sb-loading-spinner"></div>
+        <span>Syncing 3D Avatar...</span>
+      `;
 
-      // ── Main Stage Container ──
-      const stage = document.createElement("div");
-      stage.className = "sb-sign-stage";
-      stage.id = "sb-sign-stage";
+      // Error Overlay
+      const errorOverlay = document.createElement("div");
+      errorOverlay.className = "sb-viewport-overlay sb-hidden error-overlay";
+      errorOverlay.id = "sb-avatar-error";
+      errorOverlay.innerHTML = `<span>⚠️ Unable to load avatar.</span>`;
 
-      // 1. AI Video Configuration Panel (Models & Signers)
-      const aiConfigPanel = document.createElement("div");
-      aiConfigPanel.className = "sb-config-grid";
-      aiConfigPanel.id = "sb-ai-config-panel";
+      // Canvas
+      const canvas = document.createElement("canvas");
+      canvas.id = "sb-avatar-canvas";
 
-      // Model Select Group
-      const modelGroup = document.createElement("div");
-      modelGroup.className = "sb-config-item";
-      const modelLabel = document.createElement("span");
-      modelLabel.className = "sb-config-label";
-      modelLabel.textContent = "Model";
-      const modelSelect = document.createElement("select");
-      modelSelect.className = "sb-config-select";
-      modelSelect.id = "sb-model-select";
-      
-      const videoModels = [
-        { id: "google-veo", name: "Google Veo" },
-        { id: "runway-gen3", name: "Runway Gen-3" },
-        { id: "luma-dream-machine", name: "Luma Dream" },
-        { id: "kling-ai", name: "Kling AI" },
-        { id: "pika", name: "Pika Labs" }
-      ];
-      videoModels.forEach(m => {
-        const opt = document.createElement("option");
-        opt.value = m.id;
-        opt.textContent = m.name;
-        if (m.id === selectedModel) opt.selected = true;
-        modelSelect.appendChild(opt);
-      });
-      modelSelect.addEventListener("change", (e) => {
-        selectedModel = e.target.value;
-        updatePromptText(document.getElementById("sb-isl-text").textContent);
-      });
-      modelGroup.appendChild(modelLabel);
-      modelGroup.appendChild(modelSelect);
+      viewportContainer.appendChild(loadingOverlay);
+      viewportContainer.appendChild(errorOverlay);
+      viewportContainer.appendChild(canvas);
+      viewportPanel.appendChild(viewportContainer);
+      consoleBody.appendChild(viewportPanel);
 
-      // Signer Select Group
-      const signerGroup = document.createElement("div");
-      signerGroup.className = "sb-config-item";
-      const signerLabel = document.createElement("span");
-      signerLabel.className = "sb-config-label";
-      signerLabel.textContent = "Signer";
-      const signerSelect = document.createElement("select");
-      signerSelect.className = "sb-config-select";
-      signerSelect.id = "sb-signer-select";
-
-      const signerProfiles = [
-        { id: "aanya", name: "Aanya (Female)" },
-        { id: "kabir", name: "Kabir (Male)" }
-      ];
-      signerProfiles.forEach(s => {
-        const opt = document.createElement("option");
-        opt.value = s.id;
-        opt.textContent = s.name;
-        if (s.id === selectedSigner) opt.selected = true;
-        signerSelect.appendChild(opt);
-      });
-      signerSelect.addEventListener("change", (e) => {
-        selectedSigner = e.target.value;
-        updatePromptText(document.getElementById("sb-isl-text").textContent);
-      });
-      signerGroup.appendChild(signerLabel);
-      signerGroup.appendChild(signerSelect);
-
-      aiConfigPanel.appendChild(modelGroup);
-      aiConfigPanel.appendChild(signerGroup);
-      stage.appendChild(aiConfigPanel);
-
-      // 2. Prompt Textarea Panel
-      const promptWrap = document.createElement("div");
-      promptWrap.className = "sb-prompt-wrap";
-      promptWrap.id = "sb-prompt-wrap";
-      
-      const promptLabel = document.createElement("span");
-      promptLabel.className = "sb-config-label";
-      promptLabel.textContent = "AI Prompt (Editable)";
-
-      const promptTextarea = document.createElement("textarea");
-      promptTextarea.className = "sb-prompt-textarea";
-      promptTextarea.id = "sb-prompt-textarea";
-      promptTextarea.value = getCompiledPrompt(islText);
-
-      promptWrap.appendChild(promptLabel);
-      promptWrap.appendChild(promptTextarea);
-      stage.appendChild(promptWrap);
-
-      // 3. Word label and type badge (Only shown in Word Lookup mode)
-      const wordLabel = document.createElement("div");
-      wordLabel.className = "sb-word-label";
-      wordLabel.id = "sb-word-label";
-      wordLabel.style.display = "none";
-      wordLabel.textContent = "—";
-
-      const typeBadge = document.createElement("span");
-      typeBadge.className = "sb-type-badge";
-      typeBadge.id = "sb-type-badge";
-      typeBadge.textContent = "READY";
-      wordLabel.appendChild(typeBadge);
-      stage.appendChild(wordLabel);
-
-      // 4. Center stage card (Sign Card - displays video simulator or word lookup)
-      const signCard = document.createElement("div");
-      signCard.className = "sb-sign-card";
-      signCard.id = "sb-sign-card";
-      stage.appendChild(signCard);
-
-      // 5. Sign description (Only shown in Word Lookup mode)
-      const signDesc = document.createElement("div");
-      signDesc.className = "sb-sign-description";
-      signDesc.id = "sb-sign-description";
-      signDesc.style.display = "none";
-      signDesc.textContent = "";
-      stage.appendChild(signDesc);
-
-      wrapper.appendChild(stage);
-
-      // ── Word Track (Breadcrumb) ──
-      const wordTrack = document.createElement("div");
-      wordTrack.className = "sb-word-track";
-      wordTrack.id = "sb-word-track";
-      wrapper.appendChild(wordTrack);
-
-      // ── Controls Row ──
-      const controlsRow = document.createElement("div");
-      controlsRow.className = "sb-controls-row";
-
-      const prevBtn = document.createElement("button");
-      prevBtn.className = "sb-ctrl-btn";
-      prevBtn.id = "sb-prev-btn";
-      prevBtn.textContent = "⏮";
-      prevBtn.title = "Previous word";
-      prevBtn.addEventListener("click", prevWord);
-
-      const playPauseBtn = document.createElement("button");
-      playPauseBtn.className = "sb-ctrl-btn sb-play-pause-btn";
-      playPauseBtn.id = "sb-play-pause";
-      playPauseBtn.textContent = "⏸";
-      playPauseBtn.title = "Pause / Resume";
-      playPauseBtn.addEventListener("click", togglePause);
-
-      const nextBtn = document.createElement("button");
-      nextBtn.className = "sb-ctrl-btn";
-      nextBtn.id = "sb-next-btn";
-      nextBtn.textContent = "⏭";
-      nextBtn.title = "Next word";
-      nextBtn.addEventListener("click", nextWord);
-
-      const speedLabel = document.createElement("span");
-      speedLabel.className = "sb-speed-label";
-      speedLabel.id = "sb-speed-label";
-      speedLabel.textContent = "Normal";
-
-      const speedBtn = document.createElement("button");
-      speedBtn.className = "sb-ctrl-btn sb-speed-btn";
-      speedBtn.textContent = "⚡";
-      speedBtn.title = "Cycle speed";
-      speedBtn.addEventListener("click", cycleSpeed);
-
-      controlsRow.appendChild(prevBtn);
-      controlsRow.appendChild(playPauseBtn);
-      controlsRow.appendChild(nextBtn);
-      controlsRow.appendChild(speedLabel);
-      controlsRow.appendChild(speedBtn);
-      wrapper.appendChild(controlsRow);
-
-      // ── Progress Bar ──
-      const progressWrap = document.createElement("div");
-      progressWrap.className = "sb-progress-wrap";
-      const progressBar = document.createElement("div");
-      progressBar.className = "sb-progress-bar";
-      progressBar.id = "sb-progress-bar";
-      progressWrap.appendChild(progressBar);
-      wrapper.appendChild(progressWrap);
-
-      // ── Selected Text Section ──
-      const textSection = document.createElement("div");
-      textSection.className = "sb-text-section";
-
-      // English
-      const engRow = document.createElement("div");
-      engRow.className = "sb-text-row";
-      const engLabel = document.createElement("span");
-      engLabel.className = "sb-text-label";
-      engLabel.textContent = "English:";
-      const engDisplay = document.createElement("span");
-      engDisplay.className = "sb-selected-text";
-      engDisplay.id = "sb-selected-text";
-      engDisplay.textContent = originalText;
-      engRow.appendChild(engLabel);
-      engRow.appendChild(engDisplay);
-      textSection.appendChild(engRow);
-
-      // ISL
-      const islRow = document.createElement("div");
-      islRow.className = "sb-text-row";
-      const islLabel = document.createElement("span");
-      islLabel.className = "sb-text-label";
-      islLabel.textContent = "ISL Order:";
-      const islDisplay = document.createElement("span");
-      islDisplay.className = "sb-isl-text";
-      islDisplay.id = "sb-isl-text";
-      islDisplay.textContent = islText || "—";
-      islRow.appendChild(islLabel);
-      islRow.appendChild(islDisplay);
-      textSection.appendChild(islRow);
-
-      wrapper.appendChild(textSection);
+      // ── Playback Controls ──
+      const playbackPanel = document.createElement("div");
+      playbackPanel.className = "sb-panel sb-playback-panel";
+      playbackPanel.innerHTML = `
+        <div class="sb-playback-row">
+          <button id="sb-play" class="sb-playback-btn" title="Play">▶ Play</button>
+          <button id="sb-pause" class="sb-playback-btn" title="Pause">⏸ Pause</button>
+        </div>
+        <div class="sb-playback-row" style="margin-top: 6px; display: flex; gap: 6px;">
+          <button id="sb-test-head" class="sb-playback-btn sb-test-btn" title="Test Head Rotation">👤 Head Test</button>
+          <button id="sb-test-arm" class="sb-playback-btn sb-test-btn" title="Test Right Arm Rotation">💪 Arm Test</button>
+          <button id="sb-test-hand" class="sb-playback-btn sb-test-btn" title="Test Right Hand/Finger Movement">✋ Hand Test</button>
+          <button id="sb-reset" class="sb-playback-btn" title="Reset Pose">🔄 Reset Pose</button>
+        </div>
+      `;
+      consoleBody.appendChild(playbackPanel);
 
       // ── Status Bar ──
-      const statusBadge = document.createElement("div");
-      statusBadge.className = "sb-status";
-      statusBadge.id = "sb-status";
-      statusBadge.textContent = "Phase 6 — Generative Prompt Engine";
-      wrapper.appendChild(statusBadge);
+      const statusBar = document.createElement("div");
+      statusBar.className = "sb-status-bar";
+      statusBar.innerHTML = `
+        <div class="sb-status-item">
+          <span>Avatar:</span>
+          <span id="sb-status-avatar" class="sb-status-indicator offline">Offline</span>
+        </div>
+        <div class="sb-status-item">
+          <span>LLM:</span>
+          <span id="sb-status-llm" class="sb-status-indicator offline">Offline</span>
+        </div>
+        <div class="sb-status-item sb-fps-item">
+          <span class="sb-fps-text">FPS: --</span>
+        </div>
+      `;
+      consoleBody.appendChild(statusBar);
 
+      wrapper.appendChild(consoleBody);
       return wrapper;
     }
 
-    // ─── updateSelectedText(originalText, islText) ─────────────────────────
-    function updateSelectedText(originalText, islText) {
-      const engEl = document.getElementById("sb-selected-text");
-      if (engEl) engEl.textContent = originalText;
-
-      const islEl = document.getElementById("sb-isl-text");
-      if (islEl) islEl.textContent = islText || "—";
-    }
-
-    // ─── prompt helpers ────────────────────────────────────────────────────
-    function getCompiledPrompt(islText) {
-      if (window.SignBrowsePromptGenerator) {
-        return window.SignBrowsePromptGenerator.generate(islText, selectedSigner, selectedModel);
-      }
-      return islText || "";
-    }
-
-    function updatePromptText(islText) {
-      const textarea = document.getElementById("sb-prompt-textarea");
-      if (textarea) {
-        textarea.value = getCompiledPrompt(islText);
-      }
-      if (activeMode === "ai-video") {
-        renderVideoStage();
-      }
-    }
-
-    function getMp4Url(gifUrl) {
-      if (gifUrl && gifUrl.includes("giphy.gif")) {
-        return gifUrl.replace("giphy.gif", "giphy.mp4");
-      }
-      return gifUrl;
-    }
-
-    // ─── switchMode(mode) ──────────────────────────────────────────────────
-    function switchMode(mode) {
-      activeMode = mode;
-      
-      const llmTabBtn = document.getElementById("sb-tab-llm");
-      const videoTabBtn = document.getElementById("sb-tab-video");
-      const wordTabBtn = document.getElementById("sb-tab-word");
-      const aiConfigPanel = document.getElementById("sb-ai-config-panel");
-      const promptWrap = document.getElementById("sb-prompt-wrap");
-      const wordLabel = document.getElementById("sb-word-label");
-      const signDesc = document.getElementById("sb-sign-description");
-
-      stopWordPlayback();
-
-      // Reset all tabs
-      if (llmTabBtn) llmTabBtn.classList.remove("sb-tab-active");
-      if (videoTabBtn) videoTabBtn.classList.remove("sb-tab-active");
-      if (wordTabBtn) wordTabBtn.classList.remove("sb-tab-active");
-
-      if (mode === "llm-isl") {
-        if (llmTabBtn) llmTabBtn.classList.add("sb-tab-active");
-        if (aiConfigPanel) aiConfigPanel.style.display = "none";
-        if (promptWrap) promptWrap.style.display = "none";
-        if (wordLabel) wordLabel.style.display = "none";
-        if (signDesc) signDesc.style.display = "none";
-
-        setStatus("LLM ISL Mode — AI-powered translation");
-        renderLLMISLStage();
-      } else if (mode === "ai-video") {
-        if (videoTabBtn) videoTabBtn.classList.add("sb-tab-active");
-        if (aiConfigPanel) aiConfigPanel.style.display = "grid";
-        if (promptWrap) promptWrap.style.display = "flex";
-        if (wordLabel) wordLabel.style.display = "none";
-        if (signDesc) signDesc.style.display = "none";
-        
-        setStatus("Generative AI Mode active");
-        renderVideoStage();
-      } else {
-        if (wordTabBtn) wordTabBtn.classList.add("sb-tab-active");
-        if (aiConfigPanel) aiConfigPanel.style.display = "none";
-        if (promptWrap) promptWrap.style.display = "none";
-        if (wordLabel) wordLabel.style.display = "flex";
-        if (signDesc) signDesc.style.display = "block";
-
-        setStatus("Word Lookup Mode active");
-        startPlayback();
-      }
-    }
-
-    // ─── renderLLMISLStage() ───────────────────────────────────────────────
-    function renderLLMISLStage() {
-      const card = document.getElementById("sb-sign-card");
-      if (!card) return;
-
-      card.innerHTML = "";
-      card.className = "sb-sign-card";
-
-      if (llmLoading) {
-        // ── Loading spinner ──
-        const loader = document.createElement("div");
-        loader.className = "sb-avatar-loader";
-        loader.innerHTML = `
-          <div class="sb-loader-spinner"></div>
-          <div class="sb-loader-text" style="text-align:center;padding:0 10px;font-size:10px;line-height:1.4;color:#a89bfe;">
-            Translating via AI...
-          </div>`;
-        card.appendChild(loader);
-        return;
-      }
-
-      if (llmError) {
-        // ── Error display ──
-        const errPanel = document.createElement("div");
-        errPanel.style.cssText = "display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;height:100%;gap:8px;padding:16px;text-align:center;";
-        errPanel.innerHTML = `
-          <div style="font-size:28px;">⚠️</div>
-          <div style="font-size:11px;font-weight:700;color:#ff6b6b;">Translation Error</div>
-          <div style="font-size:9px;color:#8a99ad;line-height:1.4;max-width:200px;">${llmError}</div>
-          <button id="sb-llm-retry" style="margin-top:6px;padding:6px 16px;background:linear-gradient(135deg,#6c63ff,#a855f7);color:#fff;border:none;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;">Retry</button>`;
-        card.appendChild(errPanel);
-
-        // Wire retry button
-        setTimeout(() => {
-          const retryBtn = document.getElementById("sb-llm-retry");
-          if (retryBtn) retryBtn.addEventListener("click", triggerLLMTranslation);
-        }, 0);
-        return;
-      }
-
-      if (llmResult && llmResult.success) {
-        // ── Results display ──
-        const resultsPanel = document.createElement("div");
-        resultsPanel.style.cssText = "display:flex;flex-direction:column;width:100%;height:100%;overflow-y:auto;padding:12px;gap:10px;";
-
-        // Gloss pills row
-        const glossHeader = document.createElement("div");
-        glossHeader.style.cssText = "font-size:9px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:0.8px;";
-        glossHeader.textContent = "ISL Gloss";
-        resultsPanel.appendChild(glossHeader);
-
-        const glossRow = document.createElement("div");
-        glossRow.style.cssText = "display:flex;flex-wrap:wrap;gap:5px;";
-        (llmResult.gloss || []).forEach((word, i) => {
-          const pill = document.createElement("span");
-          pill.style.cssText = "display:inline-flex;align-items:center;gap:3px;padding:3px 8px;background:rgba(108,99,255,0.12);border:1px solid rgba(108,99,255,0.25);border-radius:16px;font-size:10px;font-weight:700;color:#a89bfe;letter-spacing:0.3px;";
-          pill.innerHTML = `<span style='font-size:7px;color:#555;'>${i + 1}</span>${word}`;
-          glossRow.appendChild(pill);
-        });
-        resultsPanel.appendChild(glossRow);
-
-        // Motion details
-        if (llmResult.motions && llmResult.motions.length > 0) {
-          const motionHeader = document.createElement("div");
-          motionHeader.style.cssText = "font-size:9px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:0.8px;margin-top:4px;";
-          motionHeader.textContent = "Motion Details";
-          resultsPanel.appendChild(motionHeader);
-
-          llmResult.motions.forEach(motion => {
-            const motionCard = document.createElement("div");
-            motionCard.style.cssText = "background:rgba(108,99,255,0.04);border:1px solid rgba(108,99,255,0.1);border-radius:6px;padding:6px 8px;font-size:9px;line-height:1.5;color:#aaa;";
-            motionCard.innerHTML = `
-              <strong style="color:#a89bfe;font-size:10px;">${motion.gloss || '—'}</strong>
-              <div>✋ ${motion.handShape || '—'} · 📍 ${motion.location || '—'} · 🔄 ${motion.movement || '—'}</div>
-              <div>😊 ${motion.expression || '—'} · 🤲 ${motion.handedness || 'one'}-handed</div>
-              ${motion.notes ? `<div style="color:#555;font-style:italic;">${motion.notes}</div>` : ''}`;
-            resultsPanel.appendChild(motionCard);
-          });
-        }
-
-        // Elapsed time
-        const elapsedBadge = document.createElement("div");
-        elapsedBadge.style.cssText = "font-size:8px;color:#10b981;text-align:right;margin-top:2px;";
-        elapsedBadge.textContent = `Completed in ${llmResult.elapsed || '?'}s`;
-        resultsPanel.appendChild(elapsedBadge);
-
-        // Avatar placeholder
-        const avatarPlaceholder = document.createElement("div");
-        avatarPlaceholder.style.cssText = "margin-top:8px;padding:16px;border:1px dashed rgba(108,99,255,0.2);border-radius:8px;text-align:center;background:rgba(13,13,26,0.5);";
-        avatarPlaceholder.innerHTML = `
-          <div style="font-size:24px;opacity:0.6;">🤖</div>
-          <div style="font-size:10px;font-weight:700;color:#a89bfe;margin-top:4px;">Avatar rendering coming soon...</div>
-          <div style="font-size:8px;color:#444;margin-top:2px;">Three.js avatar will animate these signs</div>`;
-        resultsPanel.appendChild(avatarPlaceholder);
-
-        card.appendChild(resultsPanel);
-        return;
-      }
-
-      // ── Default: Ready to translate ──
-      const readyPanel = document.createElement("div");
-      readyPanel.style.cssText = "display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;height:100%;gap:8px;padding:16px;text-align:center;";
-      readyPanel.innerHTML = `
-        <div style="font-size:32px;">🧠</div>
-        <div style="font-size:11px;font-weight:700;color:#a89bfe;letter-spacing:0.5px;">LLM-POWERED ISL TRANSLATION</div>
-        <div style="font-size:9px;color:#8a99ad;line-height:1.3;max-width:180px;">Translate selected text to ISL using AI with structured gloss and motion data.</div>
-        <button id="sb-llm-translate" style="margin-top:6px;padding:8px 20px;background:linear-gradient(135deg,#6c63ff,#a855f7,#ff65a3);color:#fff;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;box-shadow:0 4px 12px rgba(108,99,255,0.3);letter-spacing:0.3px;">Translate with AI</button>`;
-      card.appendChild(readyPanel);
-
-      // Wire the translate button
-      setTimeout(() => {
-        const transBtn = document.getElementById("sb-llm-translate");
-        if (transBtn) transBtn.addEventListener("click", triggerLLMTranslation);
-      }, 0);
-    }
-
-    // ─── triggerLLMTranslation() ─────────────────────────────────────────
-    function triggerLLMTranslation() {
-      const islTextEl = document.getElementById("sb-isl-text");
-      const engTextEl = document.getElementById("sb-selected-text");
-      const text = engTextEl ? engTextEl.textContent : (islTextEl ? islTextEl.textContent : "");
-
-      if (!text || text === "—") {
-        llmError = "No text available to translate.";
-        renderLLMISLStage();
-        return;
-      }
-
-      llmLoading = true;
-      llmError = null;
-      llmResult = null;
-      renderLLMISLStage();
-
-      // Send to background service worker for Gemini processing
-      chrome.runtime.sendMessage(
-        { type: "TRANSLATE_TO_ISL", payload: { text: text } },
-        (response) => {
-          llmLoading = false;
-
-          if (chrome.runtime.lastError) {
-            llmError = chrome.runtime.lastError.message;
-            renderLLMISLStage();
-            setStatus("LLM translation failed");
-            return;
-          }
-
-          if (response && response.status === "success" && response.result) {
-            llmResult = response.result;
-            setStatus(`LLM translation complete — ${llmResult.gloss?.length || 0} signs`);
-          } else {
-            llmError = response?.message || "Translation failed — unknown error.";
-            setStatus("LLM translation failed");
-          }
-
-          renderLLMISLStage();
-        }
-      );
-    }
-
-    // ─── renderVideoStage() ────────────────────────────────────────────────
-    function renderVideoStage() {
-      const card = document.getElementById("sb-sign-card");
-      if (!card) return;
-
-      card.innerHTML = "";
-      card.className = "sb-sign-card";
-
-      // Get API status
-      const apiStatus = window.SignBrowseVideoRequest
-        ? window.SignBrowseVideoRequest.getApiStatus()
-        : "disconnected";
-
-      if (isGenerating) {
-        // ── GENERATING: Spinner & step-by-step progress ──
-        const loader = document.createElement("div");
-        loader.className = "sb-avatar-loader";
-        
-        const spinner = document.createElement("div");
-        spinner.className = "sb-loader-spinner";
-        
-        const statusText = document.createElement("div");
-        statusText.className = "sb-loader-text";
-        statusText.innerHTML = `<div style="text-align:center;padding:0 10px;font-size:9px;line-height:1.4;">${generationStatus}</div><div style="font-size:16px;font-weight:bold;margin-top:6px;text-align:center;color:#ff65a3;">${generationProgress}%</div>`;
-        
-        // Show progress bar inside loader
-        const progressOuter = document.createElement("div");
-        progressOuter.style.cssText = "width:80%;height:4px;background:rgba(108,99,255,0.15);border-radius:4px;overflow:hidden;margin-top:4px;";
-        const progressInner = document.createElement("div");
-        progressInner.style.cssText = `width:${generationProgress}%;height:100%;background:linear-gradient(90deg,#6c63ff,#ff65a3);border-radius:4px;transition:width 0.3s;`;
-        progressOuter.appendChild(progressInner);
-
-        loader.appendChild(spinner);
-        loader.appendChild(statusText);
-        loader.appendChild(progressOuter);
-        card.appendChild(loader);
-
-      } else if (generatedVideoData) {
-        const videoUrl = generatedVideoData.videoUrl;
-
-        // Debugging logs requested by user
-        console.log("generatedVideoData:", generatedVideoData);
-        console.log("videoUrl:", videoUrl);
-
-        if (videoUrl) {
-          fetch(videoUrl)
-            .then(r => console.log("Status:", r.status))
-            .catch(console.error);
-
-          renderRealVideo(card, videoUrl);
-        } else {
-          renderErrorPanel(card, "No Video URL", "The AI video generation completed but returned an empty video resource.");
-        }
-
-      } else {
-        // ── READY TO GENERATE ──
-        renderReadyPanel(card, apiStatus);
-      }
-    }
-
-    // ─── renderRealVideo(card, videoUrl) ──────────────────────────────────
-    function renderRealVideo(card, videoUrl) {
-      const optimalUrl = getOptimalVideoUrl(videoUrl);
-      const isGif = optimalUrl.toLowerCase().endsWith(".gif");
-
-      const playerContainer = document.createElement("div");
-      playerContainer.className = "sb-player-container sb-show-controls";
-      playerContainer.style.width = "100%";
-      playerContainer.style.height = "100%";
-
-      let mediaElement;
-      if (isGif) {
-        mediaElement = document.createElement("img");
-        mediaElement.className = "sb-video-element";
-        mediaElement.referrerPolicy = "no-referrer";
-        mediaElement.src = optimalUrl;
-        mediaElement.alt = "AI Sign Language translation";
-      } else {
-        mediaElement = document.createElement("video");
-        mediaElement.className = "sb-video-element";
-        mediaElement.autoplay = true;
-        mediaElement.loop = true;
-        mediaElement.muted = true;
-        mediaElement.playsInline = true;
-        mediaElement.referrerPolicy = "no-referrer";
-        mediaElement.src = optimalUrl;
-      }
-
-      // Handle loading errors
-      mediaElement.addEventListener("error", () => {
-        console.warn("[SignBrowse] Direct asset load failed, retrying via proxy:", optimalUrl);
-        chrome.runtime.sendMessage({
-          type: "PROXY_FETCH_ASSET",
-          url: optimalUrl
-        }, response => {
-          if (response && response.status === "success" && response.dataUrl) {
-            console.log("[SignBrowse] Proxy fetch succeeded. Loading base64 asset.");
-            mediaElement.src = response.dataUrl;
-          } else {
-            // If it was a converted MP4 and failed, try falling back to original GIF url
-            if (!isGif && videoUrl !== optimalUrl) {
-              console.log("[SignBrowse] MP4 load failed, falling back to original GIF:", videoUrl);
-              renderRealVideo(card, videoUrl);
-            } else {
-              const errMsg = response ? response.message : "No background worker response";
-              renderErrorPanel(playerContainer, optimalUrl, errMsg);
-            }
-          }
-        });
-      });
-
-      playerContainer.appendChild(mediaElement);
-
-      // Play/Pause Overlay indicator
-      const overlay = document.createElement("div");
-      overlay.className = "sb-player-overlay sb-fade-out";
-      const overlayIcon = document.createElement("span");
-      overlayIcon.className = "sb-player-overlay-icon";
-      overlayIcon.textContent = "▶";
-      overlay.appendChild(overlayIcon);
-      playerContainer.appendChild(overlay);
-
-      // Controls Bar
-      const controls = document.createElement("div");
-      controls.className = "sb-player-controls";
-
-      // Play/Pause button
-      const playBtn = document.createElement("button");
-      playBtn.className = "sb-player-btn sb-play-btn";
-      playBtn.textContent = "⏸";
-      playBtn.title = "Play / Pause";
-      controls.appendChild(playBtn);
-
-      // Replay button
-      const replayBtn = document.createElement("button");
-      replayBtn.className = "sb-player-btn sb-replay-btn";
-      replayBtn.textContent = "⟳";
-      replayBtn.title = "Replay";
-      controls.appendChild(replayBtn);
-
-      // Seek Slider
-      const seekBar = document.createElement("input");
-      seekBar.type = "range";
-      seekBar.className = "sb-player-seek";
-      seekBar.min = "0";
-      seekBar.max = "100";
-      seekBar.value = "0";
-      seekBar.step = "0.1";
-      seekBar.title = "Seek";
-      controls.appendChild(seekBar);
-
-      // Time Display
-      const timeDisplay = document.createElement("span");
-      timeDisplay.className = "sb-player-time";
-      timeDisplay.textContent = "0:00 / 0:00";
-      controls.appendChild(timeDisplay);
-
-      // Speed selector
-      const speedSelect = document.createElement("select");
-      speedSelect.className = "sb-player-speed";
-      speedSelect.title = "Playback Speed";
-      const speeds = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
-      speeds.forEach(s => {
-        const opt = document.createElement("option");
-        opt.value = s;
-        opt.textContent = `${s}x`;
-        if (s === 1.0) opt.selected = true;
-        speedSelect.appendChild(opt);
-      });
-      controls.appendChild(speedSelect);
-
-      // Download button
-      const downloadBtn = document.createElement("button");
-      downloadBtn.className = "sb-player-btn sb-download-btn";
-      downloadBtn.textContent = "⬇";
-      downloadBtn.title = "Download";
-      controls.appendChild(downloadBtn);
-
-      // Fullscreen button
-      const fullscreenBtn = document.createElement("button");
-      fullscreenBtn.className = "sb-player-btn sb-fullscreen-btn";
-      fullscreenBtn.textContent = "⛶";
-      fullscreenBtn.title = "Fullscreen";
-      controls.appendChild(fullscreenBtn);
-
-      playerContainer.appendChild(controls);
-
-      // Behavior for GIF vs Video
-      if (isGif) {
-        seekBar.disabled = true;
-        seekBar.style.opacity = "0.5";
-        speedSelect.disabled = true;
-        speedSelect.style.opacity = "0.5";
-        playBtn.disabled = true;
-        playBtn.style.opacity = "0.5";
-        replayBtn.disabled = true;
-        replayBtn.style.opacity = "0.5";
-        timeDisplay.textContent = "GIF Mode";
-      } else {
-        const togglePlay = (e) => {
-          if (e) e.stopPropagation();
-          if (mediaElement.paused) {
-            mediaElement.play().catch(() => {});
-            playBtn.textContent = "⏸";
-            overlayIcon.textContent = "▶";
-            overlay.classList.add("sb-fade-out");
-            overlay.style.opacity = "0";
-          } else {
-            mediaElement.pause();
-            playBtn.textContent = "▶";
-            overlayIcon.textContent = "⏸";
-            overlay.classList.remove("sb-fade-out");
-            overlay.style.opacity = "1";
-          }
-        };
-
-        mediaElement.addEventListener("click", togglePlay);
-        playBtn.addEventListener("click", togglePlay);
-        overlay.addEventListener("click", togglePlay);
-
-        replayBtn.addEventListener("click", (e) => {
-          e.stopPropagation();
-          mediaElement.currentTime = 0;
-          mediaElement.play().catch(() => {});
-          playBtn.textContent = "⏸";
-          overlay.classList.add("sb-fade-out");
-          overlay.style.opacity = "0";
-        });
-
-        const formatTime = (sec) => {
-          if (isNaN(sec) || sec === Infinity) return "0:00";
-          const m = Math.floor(sec / 60);
-          const s = Math.floor(sec % 60);
-          return `${m}:${s < 10 ? '0' : ''}${s}`;
-        };
-
-        mediaElement.addEventListener("timeupdate", () => {
-          if (!mediaElement.duration) return;
-          const pct = (mediaElement.currentTime / mediaElement.duration) * 100;
-          seekBar.value = pct;
-          timeDisplay.textContent = `${formatTime(mediaElement.currentTime)} / ${formatTime(mediaElement.duration)}`;
-        });
-
-        mediaElement.addEventListener("loadedmetadata", () => {
-          timeDisplay.textContent = `${formatTime(mediaElement.currentTime)} / ${formatTime(mediaElement.duration)}`;
-        });
-
-        seekBar.addEventListener("input", (e) => {
-          e.stopPropagation();
-          if (!mediaElement.duration) return;
-          const time = (seekBar.value / 100) * mediaElement.duration;
-          mediaElement.currentTime = time;
-        });
-
-        speedSelect.addEventListener("change", (e) => {
-          mediaElement.playbackRate = parseFloat(e.target.value);
-        });
-
-        updateVideoSpeed(mediaElement);
-        if (isPaused) {
-          mediaElement.pause();
-          playBtn.textContent = "▶";
-          overlay.classList.remove("sb-fade-out");
-          overlay.style.opacity = "1";
-        }
-      }
-
-      // Download Handler
-      downloadBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        downloadBtn.disabled = true;
-        const originalText = downloadBtn.textContent;
-        downloadBtn.textContent = "⏳";
-
-        const triggerDownload = (url) => {
-          const a = document.createElement("a");
-          a.href = url;
-          a.download = isGif ? "signbrowse-translation.gif" : "signbrowse-translation.mp4";
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          downloadBtn.disabled = false;
-          downloadBtn.textContent = originalText;
-        };
-
-        if (mediaElement.src.startsWith("data:")) {
-          triggerDownload(mediaElement.src);
-        } else {
-          fetch(mediaElement.src)
-            .then(res => res.blob())
-            .then(blob => {
-              const localUrl = URL.createObjectURL(blob);
-              triggerDownload(localUrl);
-              setTimeout(() => URL.revokeObjectURL(localUrl), 1000);
-            })
-            .catch(err => {
-              console.warn("Direct download failed, trying SW proxy:", err);
-              chrome.runtime.sendMessage({
-                type: "PROXY_FETCH_ASSET",
-                url: optimalUrl
-              }, response => {
-                if (response && response.status === "success" && response.dataUrl) {
-                  triggerDownload(response.dataUrl);
-                } else {
-                  console.error("Proxy download failed");
-                  downloadBtn.disabled = false;
-                  downloadBtn.textContent = originalText;
-                }
-              });
-            });
-        }
-      });
-
-      // Fullscreen Handler
-      fullscreenBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        if (!document.fullscreenElement) {
-          playerContainer.requestFullscreen().catch(err => {
-            console.warn("Fullscreen request failed:", err);
-          });
-        } else {
-          document.exitFullscreen();
-        }
-      });
-
-      const onFullscreenChange = () => {
-        if (document.fullscreenElement === playerContainer) {
-          fullscreenBtn.textContent = "✕";
-          fullscreenBtn.title = "Exit Fullscreen";
-          playerContainer.classList.add("sb-fullscreen-active");
-        } else {
-          fullscreenBtn.textContent = "⛶";
-          fullscreenBtn.title = "Fullscreen";
-          playerContainer.classList.remove("sb-fullscreen-active");
-        }
-      };
-      
-      document.addEventListener("fullscreenchange", onFullscreenChange);
-      
-      // Clean up fullscreen listener when player is removed from DOM
-      const observer = new MutationObserver(() => {
-        if (!document.body.contains(playerContainer)) {
-          document.removeEventListener("fullscreenchange", onFullscreenChange);
-          observer.disconnect();
-        }
-      });
-      observer.observe(card, { childList: true });
-
-      // Controls visibility timer
-      let hideControlsTimeout;
-      const resetControlsTimer = () => {
-        playerContainer.classList.add("sb-show-controls");
-        clearTimeout(hideControlsTimeout);
-        const isPlaying = !isGif && !mediaElement.paused;
-        if (isPlaying) {
-          hideControlsTimeout = setTimeout(() => {
-            playerContainer.classList.remove("sb-show-controls");
-          }, 2000);
-        }
-      };
-
-      playerContainer.addEventListener("mousemove", resetControlsTimer);
-      playerContainer.addEventListener("mouseenter", resetControlsTimer);
-      playerContainer.addEventListener("mouseleave", () => {
-        const isPlaying = !isGif && !mediaElement.paused;
-        if (isPlaying) {
-          playerContainer.classList.remove("sb-show-controls");
-        }
-      });
-
-      resetControlsTimer();
-      card.appendChild(playerContainer);
-    }
-
-    function getOptimalVideoUrl(url) {
-      if (!url) return "";
-      // Convert giphy gif to mp4
-      const giphyMatch = url.match(/giphy\.com\/(?:gifs|media|)[^\/]*\/([a-zA-Z0-9]+)\.gif/) || 
-                         url.match(/i\.giphy\.com\/([a-zA-Z0-9]+)\.gif/);
-      if (giphyMatch && giphyMatch[1]) {
-        const id = giphyMatch[1];
-        return `https://media.giphy.com/media/${id}/giphy.mp4`;
-      }
-      return url;
-    }
-
-    function renderErrorPanel(container, url, errMsg) {
-      container.innerHTML = "";
-      const errPanel = document.createElement("div");
-      errPanel.style.cssText = "display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;height:100%;gap:8px;padding:16px;text-align:center;background:#070712;border-radius:14px;";
-      errPanel.innerHTML = `<div style="font-size:28px;">⚠️</div><div style="font-size:11px;font-weight:700;color:#ff6b6b;">Video Failed to Load</div><div style="font-size:9px;color:#8a99ad;line-height:1.4;">Direct loading and background proxy both failed. Verify the file exists and is accessible.</div><div style="font-size:9px;color:#8a99ad;line-height:1.4;text-align:left;width:100%;"><strong>URL:</strong> <code style="font-family:monospace;word-break:break-all;color:#ff65a3;font-size:8px;">${url}</code><br><strong>Proxy Error:</strong> <code style="font-family:monospace;word-break:break-all;color:#ff6b6b;font-size:8px;">${errMsg}</code></div>`;
-      container.appendChild(errPanel);
-    }
-
-    // ─── renderReadyPanel(card, apiStatus) ────────────────────────────────
-    function renderReadyPanel(card, apiStatus) {
-      const panel = document.createElement("div");
-      panel.className = "sb-video-stage";
-      panel.style.cssText = "padding:16px;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;";
-
-      // API Status badge
-      const statusBadge = document.createElement("div");
-      statusBadge.className = "sb-api-status-badge";
-      if (apiStatus === "connected") {
-        statusBadge.innerHTML = '<span style="color:#10b981;">●</span> API Connected';
-        statusBadge.style.color = "#10b981";
-      } else {
-        statusBadge.innerHTML = '<span style="color:#ff6b6b;">●</span> Disconnected';
-        statusBadge.style.color = "#ff6b6b";
-      }
-
-      const title = document.createElement("div");
-      title.style.cssText = "font-size:11px;font-weight:700;color:#a89bfe;letter-spacing:0.5px;";
-      title.textContent = "🎬 AI VIDEO GENERATOR";
-
-      const desc = document.createElement("div");
-      desc.style.cssText = "font-size:9px;color:#8a99ad;line-height:1.3;max-width:180px;";
-      desc.textContent = "Generate a character-consistent sign language video using the selected model.";
-
-      const btn = document.createElement("button");
-      btn.className = "sb-generate-btn";
-      btn.textContent = "Generate AI Video";
-      btn.addEventListener("click", triggerVideoGeneration);
-
-      panel.appendChild(statusBadge);
-      panel.appendChild(title);
-      panel.appendChild(desc);
-      panel.appendChild(btn);
-      card.appendChild(panel);
-    }
-
-    // ─── triggerVideoGeneration() ─────────────────────────────────────────
-    function triggerVideoGeneration() {
-      const textarea = document.getElementById("sb-prompt-textarea");
-      const prompt = textarea ? textarea.value : getCompiledPrompt(document.getElementById("sb-isl-text").textContent);
-      const islText = document.getElementById("sb-isl-text").textContent;
-
-      if (!prompt) return;
-
-      console.log("[SignBrowse] ═══ Video Generation Triggered ═══");
-      console.log("[SignBrowse] Selected Model:", selectedModel);
-      console.log("[SignBrowse] Selected Signer:", selectedSigner);
-      console.log("[SignBrowse] ISL Gloss:", islText);
-      console.log("[SignBrowse] Generated Prompt:", prompt.substring(0, 150) + "...");
-
-      isGenerating = true;
-      generationProgress = 0;
-      generationStatus = "Initializing generation pipeline...";
-      renderVideoStage();
-
-      if (window.SignBrowsePromptGenerator) {
-        window.SignBrowsePromptGenerator.submitRequest(selectedModel, prompt, islText, (progress, status) => {
-          generationProgress = progress;
-          generationStatus = status;
-          renderVideoStage();
-        }).then(result => {
-          isGenerating = false;
-          generatedVideoData = result;
-          isPaused = false;
-
-          console.log("[SignBrowse] ═══ Video Generation Complete ═══");
-          console.log("[SignBrowse] Video URL:", result.videoUrl);
-          console.log("[SignBrowse] Engine:", result.engineName);
-
-          const ppBtn = document.getElementById("sb-play-pause");
-          if (ppBtn) ppBtn.textContent = "⏸";
-
-          renderVideoStage();
-          setStatus("AI Sign Video generated successfully (" + result.engineName + ")");
-        }).catch(err => {
-          isGenerating = false;
-          generationStatus = "Generation failed";
-          console.error("[SignBrowse] Generation error:", err);
-          renderVideoStage();
-          setStatus("Error: " + err.message);
-        });
-      } else {
-        isGenerating = false;
-        renderVideoStage();
-        setStatus("Error: Prompt generator module not loaded.");
-      }
-    }
-
-    // ─── updateVideoSpeed(videoEl) ────────────────────────────────────────
-    function updateVideoSpeed(videoEl) {
-      if (!videoEl || typeof videoEl.playbackRate === "undefined") return;
-      let rate = 1.0;
-      if (playbackSpeed === 1000) rate = 1.5; // Fast
-      else if (playbackSpeed === 3000) rate = 0.65; // Slow
-      videoEl.playbackRate = rate;
-    }
-
-    // ─── updateVideoPlayPause(videoEl) ────────────────────────────────────
-    function updateVideoPlayPause(videoEl) {
-      if (!videoEl || typeof videoEl.play !== "function") return;
-      if (isPaused) {
-        videoEl.pause();
-      } else {
-        videoEl.play().catch(() => {});
-      }
-    }
-
-    // ═══════════════════════════════════════════════════════════════════════
-    // PLAYBACK COORDINATOR (Word-by-word sequence playback logic)
-    // ═══════════════════════════════════════════════════════════════════════
-
-    function startPlayback() {
-      stopWordPlayback();
-      isPaused = false;
-      currentTokenIndex = 0;
-
-      if (!tokens.length) {
-        setStatus("No translatable words found.");
-        return;
-      }
-
-      buildWordTrack();
-
-      const ppBtn = document.getElementById("sb-play-pause");
-      if (ppBtn) ppBtn.textContent = "⏸";
-
-      showCurrentToken();
-    }
-
-    function stopWordPlayback() {
-      if (wordPlaybackTimeout) {
-        clearTimeout(wordPlaybackTimeout);
-        wordPlaybackTimeout = null;
-      }
-      if (fingerspellInterval) {
-        clearInterval(fingerspellInterval);
-        fingerspellInterval = null;
-      }
-    }
-
-    function advanceToken() {
-      currentTokenIndex++;
-      if (currentTokenIndex >= tokens.length) {
-        currentTokenIndex = 0; // loop
-      }
-      showCurrentToken();
-    }
-
-    function prevWord() {
-      if (!tokens.length) return;
-      currentTokenIndex--;
-      if (currentTokenIndex < 0) currentTokenIndex = tokens.length - 1;
-      showCurrentToken();
-    }
-
-    function nextWord() {
-      if (!tokens.length) return;
-      currentTokenIndex++;
-      if (currentTokenIndex >= tokens.length) currentTokenIndex = 0;
-      showCurrentToken();
-    }
-
-    function showCurrentToken() {
-      if (activeMode !== "word" || !tokens.length) return;
-
-      const token = tokens[currentTokenIndex];
-      const wordLabel = document.getElementById("sb-word-label");
-      const typeBadge = document.getElementById("sb-type-badge");
-      const signDesc = document.getElementById("sb-sign-description");
-      const progressBar = document.getElementById("sb-progress-bar");
-
-      // Update word label text
-      if (wordLabel) {
-        wordLabel.childNodes[0].textContent = token.word.toUpperCase() + " ";
-      }
-
-      // Update type badges & descriptions
-      if (typeBadge) {
-        if (token.type === "sign") {
-          typeBadge.textContent = "ISL SIGN";
-          typeBadge.className = "sb-type-badge sb-badge-sign";
-          if (signDesc) {
-            signDesc.textContent = (token.data && token.data.description) || "Dictionary looked up sign gesture";
-            signDesc.style.display = "block";
-          }
-        } else {
-          typeBadge.textContent = "FINGERSPELL";
-          typeBadge.className = "sb-type-badge sb-badge-spell";
-          if (signDesc) {
-            signDesc.textContent = `Spelling: ${token.letters.join(" → ")}`;
-            signDesc.style.display = "block";
-          }
-        }
-      }
-
-      // Update word track highlighted index
-      highlightWordTrack(currentTokenIndex);
-
-      // Update progress bar percentage
-      if (progressBar) {
-        const pct = ((currentTokenIndex + 1) / tokens.length) * 100;
-        progressBar.style.width = `${pct}%`;
-      }
-
-      // Stop previous playback cycles before executing new ones
-      stopWordPlayback();
-
-      // Play token sequence
-      if (token.type === "sign") {
-        playSignWordToken(token, () => {
-          if (!isPaused) advanceToken();
-        });
-      } else {
-        playFingerspellingToken(token, () => {
-          if (!isPaused) advanceToken();
-        });
-      }
-    }
-
-    // ─── playSignWordToken(token, onDone) ─────────────────────────────────
-    function playSignWordToken(token, onDone) {
-      const card = document.getElementById("sb-sign-card");
-      if (!card) return;
-
-      card.innerHTML = "";
-      card.className = "sb-sign-card sb-card-enter";
-
-      const container = document.createElement("div");
-      container.style.display = "flex";
-      container.style.flexDirection = "column";
-      container.style.alignItems = "center";
-      container.style.justifyContent = "center";
-      container.style.width = "100%";
-      container.style.height = "100%";
-      container.style.padding = "20px";
-      container.style.gap = "8px";
-
-      const icon = document.createElement("div");
-      icon.style.fontSize = "36px";
-      icon.style.filter = "drop-shadow(0 0 8px rgba(108, 99, 255, 0.35))";
-      icon.textContent = "✦";
-
-      const wordTitle = document.createElement("div");
-      wordTitle.style.fontSize = "22px";
-      wordTitle.style.fontWeight = "800";
-      wordTitle.style.color = "#fff";
-      wordTitle.style.letterSpacing = "1px";
-      wordTitle.style.textTransform = "uppercase";
-      wordTitle.textContent = token.word;
-
-      const badge = document.createElement("div");
-      badge.style.fontSize = "8px";
-      badge.style.fontWeight = "700";
-      badge.style.color = "#10b981";
-      badge.style.background = "rgba(16, 185, 129, 0.1)";
-      badge.style.border = "1px solid rgba(16, 185, 129, 0.25)";
-      badge.style.borderRadius = "4px";
-      badge.style.padding = "3px 8px";
-      badge.style.textTransform = "uppercase";
-      badge.textContent = "Dictionary Looked Up";
-
-      container.appendChild(icon);
-      container.appendChild(wordTitle);
-      container.appendChild(badge);
-      card.appendChild(container);
-
-      let wordDuration = playbackSpeed;
-      wordPlaybackTimeout = setTimeout(() => {
-        if (!isPaused) {
-          onDone();
-        }
-      }, wordDuration);
-    }
-
-    // ─── playFingerspellingToken(token, onDone) ───────────────────────────
-    function playFingerspellingToken(token, onDone) {
-      const card = document.getElementById("sb-sign-card");
-      if (!card) return;
-
-      const letters = token.letters || [];
-      if (!letters.length) {
-        onDone();
-        return;
-      }
-
-      card.innerHTML = "";
-      card.className = "sb-sign-card sb-card-enter";
-
-      // Create spelling container
-      const container = document.createElement("div");
-      container.style.display = "flex";
-      container.style.flexDirection = "column";
-      container.style.alignItems = "center";
-      container.style.justifyContent = "center";
-      container.style.width = "100%";
-      container.style.height = "100%";
-      container.style.gap = "12px";
-
-      // Big letter bubble
-      const bubble = document.createElement("div");
-      bubble.className = "sb-active-letter sb-letter-pop";
-      bubble.style.position = "static";
-      bubble.style.width = "64px";
-      bubble.style.height = "64px";
-      bubble.style.fontSize = "32px";
-      bubble.style.borderRadius = "50%";
-      bubble.style.background = "linear-gradient(135deg, #6c63ff, #ff65a3)";
-      bubble.style.color = "#fff";
-      bubble.style.fontWeight = "800";
-      bubble.style.display = "flex";
-      bubble.style.alignItems = "center";
-      bubble.style.justifyContent = "center";
-      bubble.style.boxShadow = "0 4px 15px rgba(108, 99, 255, 0.4)";
-      bubble.textContent = letters[0];
-
-      // Small tracker bar
-      const letterTrack = document.createElement("div");
-      letterTrack.className = "sb-letter-track";
-
-      letters.forEach((letChar, idx) => {
-        const span = document.createElement("span");
-        span.className = "sb-track-letter";
-        span.textContent = letChar;
-        if (idx === 0) span.className = "sb-track-letter sb-track-active";
-        letterTrack.appendChild(span);
-      });
-
-      container.appendChild(bubble);
-      container.appendChild(letterTrack);
-      card.appendChild(container);
-
-      let letterIdx = 0;
-      let letterDelay = 600; // Normal
-      if (playbackSpeed === 1000) letterDelay = 350; // Fast
-      else if (playbackSpeed === 3000) letterDelay = 900; // Slow
-
-      fingerspellInterval = setInterval(() => {
-        if (isPaused) return; // Wait if paused
-
-        letterIdx++;
-        if (letterIdx < letters.length) {
-          // Update bubble
-          bubble.textContent = letters[letterIdx];
-          bubble.classList.remove("sb-letter-pop");
-          void bubble.offsetWidth; // Reflow trigger
-          bubble.classList.add("sb-letter-pop");
-
-          // Update letter track
-          const chips = letterTrack.querySelectorAll(".sb-track-letter");
-          chips.forEach((c, idx) => {
-            if (idx === letterIdx) c.className = "sb-track-letter sb-track-active";
-            else if (idx < letterIdx) c.className = "sb-track-letter sb-track-done";
-            else c.className = "sb-track-letter";
-          });
-        } else {
-          clearInterval(fingerspellInterval);
-          fingerspellInterval = null;
-          // Finished this word, delay briefly and go next
-          wordPlaybackTimeout = setTimeout(() => {
-            if (!isPaused) {
-              onDone();
-            }
-          }, letterDelay);
-        }
-      }, letterDelay);
-    }
-
-    // ─── Word Track rendering ──────────────────────────────────────────────
-    function buildWordTrack() {
-      const track = document.getElementById("sb-word-track");
-      if (!track) return;
-      track.innerHTML = "";
-
-      tokens.forEach((token, i) => {
-        const chip = document.createElement("span");
-        chip.className = "sb-word-chip";
-        chip.dataset.index = i;
-
-        const icon = token.type === "sign" ? "✦" : "⠿";
-        chip.innerHTML = `<span class="sb-chip-icon">${icon}</span>${token.word}`;
-
-        // Jump to chip word index
-        chip.addEventListener("click", () => {
-          currentTokenIndex = i;
+    /**
+     * Positions the overlay nicely on the viewport, near the selection if possible.
+     */
+    function positionOverlay(el) {
+      // Default to top-right of the window
+      el.style.top = "80px";
+      el.style.right = "40px";
+      el.style.left = "auto";
+      el.style.bottom = "auto";
+
+      // Try placing near the selection bounds
+      const selection = window.getSelection();
+      if (selection && selection.rangeCount > 0) {
+        const range = selection.getRangeAt(0);
+        const rect = range.getBoundingClientRect();
+        if (rect.width > 0 && rect.height > 0) {
+          // Place 20px below selection or to the right
+          const targetTop = rect.bottom + window.scrollY + 20;
+          const targetLeft = Math.min(
+            rect.left + window.scrollX,
+            window.innerWidth - 440
+          );
           
-          // Switch to word lookup tab automatically when clicking chips
-          if (activeMode !== "word") {
-            switchMode("word");
-          } else {
-            showCurrentToken();
-          }
-        });
-
-        track.appendChild(chip);
-      });
-    }
-
-    function highlightWordTrack(index) {
-      const track = document.getElementById("sb-word-track");
-      if (!track) return;
-
-      track.querySelectorAll(".sb-word-chip").forEach((el, i) => {
-        el.classList.toggle("sb-chip-active", i === index);
-        el.classList.toggle("sb-chip-done", i < index);
-      });
-
-      const active = track.querySelector(".sb-chip-active");
-      if (active) {
-        active.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
-      }
-    }
-
-    // ─── Playback Controls ───────────────────────────────────────────────────
-    function togglePause() {
-      isPaused = !isPaused;
-      const ppBtn = document.getElementById("sb-play-pause");
-      if (ppBtn) ppBtn.textContent = isPaused ? "▶" : "⏸";
-
-      if (activeMode === "ai-video") {
-        const video = document.querySelector(".sb-video-element");
-        if (video) {
-          updateVideoPlayPause(video);
-        }
-        setStatus(isPaused ? "Paused — click ▶ to resume" : "Phase 6 — Generative Prompt Engine");
-      } else {
-        setStatus(isPaused ? "Paused — click ▶ to resume" : "Phase 6 — Generative Prompt Engine");
-        if (!isPaused) {
-          showCurrentToken();
-        } else {
-          stopWordPlayback();
-        }
-      }
-    }
-
-    function cycleSpeed() {
-      if (playbackSpeed === 2000) playbackSpeed = 1000;
-      else if (playbackSpeed === 1000) playbackSpeed = 3000;
-      else playbackSpeed = 2000;
-
-      const label = document.getElementById("sb-speed-label");
-      if (label) {
-        const names = { 1000: "Fast", 2000: "Normal", 3000: "Slow" };
-        label.textContent = names[playbackSpeed] || "Normal";
-      }
-
-      if (activeMode === "ai-video") {
-        const video = document.querySelector(".sb-video-element");
-        if (video) {
-          updateVideoSpeed(video);
-        }
-      } else {
-        if (tokens.length && !isPaused) {
-          const token = tokens[currentTokenIndex];
-          if (token.type === "spell" && fingerspellInterval) {
-            showCurrentToken();
+          // Verify bounds
+          if (targetTop + 550 < window.innerHeight + window.scrollY) {
+            el.style.top = `${targetTop}px`;
+            el.style.left = `${targetLeft}px`;
+            el.style.right = "auto";
           }
         }
       }
     }
 
-    function setStatus(text) {
-      const el = document.getElementById("sb-status");
-      if (el) el.textContent = text;
-    }
-
-    // ─── Drag & Close ───────────────────────────────────────────────────────
+    /**
+     * Attaches mouse drag event handlers to the header.
+     */
     function attachDragHandlers(el) {
       const header = el.querySelector(".sb-header");
 
       header.addEventListener("mousedown", (e) => {
-        if (e.target.classList.contains("sb-close-btn")) return;
+        // Prevent dragging if clicking buttons
+        if (e.target.tagName === "BUTTON") return;
+
         isDragging = true;
         const rect = el.getBoundingClientRect();
         dragOffsetX = e.clientX - rect.left;
@@ -1575,18 +294,378 @@ if (!window.__signBrowseLoaded) {
       });
     }
 
-    function attachCloseHandler(el) {
+    /**
+     * Attaches close, minimize, and playback button handlers.
+     */
+    function attachControlHandlers(el) {
       const closeBtn = el.querySelector(".sb-close-btn");
+      const minBtn = el.querySelector(".sb-min-btn");
+      const consoleBody = el.querySelector(".sb-console-body");
+
+      // Close console
       closeBtn.addEventListener("click", () => {
-        el.classList.add("sb-hidden");
-        el.classList.remove("sb-visible");
-        stopWordPlayback();
+        closeOverlay();
       });
+
+      // Minimize/Maximize console
+      minBtn.addEventListener("click", () => {
+        isMinimized = !isMinimized;
+        if (isMinimized) {
+          consoleBody.style.display = "none";
+          el.style.height = "auto";
+          minBtn.textContent = "🗖";
+          minBtn.title = "Restore Console";
+        } else {
+          consoleBody.style.display = "flex";
+          el.style.height = "";
+          minBtn.textContent = "🗕";
+          minBtn.title = "Minimize Console";
+        }
+      });
+
+      // Playback Controls
+      const playBtn = el.querySelector("#sb-play");
+      const pauseBtn = el.querySelector("#sb-pause");
+      const resetBtn = el.querySelector("#sb-reset");
+      const testHeadBtn = el.querySelector("#sb-test-head");
+      const testArmBtn = el.querySelector("#sb-test-arm");
+      const testHandBtn = el.querySelector("#sb-test-hand");
+
+      if (playBtn) {
+        playBtn.addEventListener("click", () => {
+          chrome.storage.local.get(["translationMode"], (saved) => {
+            const mode = saved.translationMode || "avatar";
+            if (mode === "video") {
+              const video = el.querySelector("#sb-video-player");
+              if (video) video.play();
+            } else {
+              if (window.SignBrowseGestureMapper && currentGlossWords.length > 0) {
+                window.SignBrowseGestureMapper.playSentence(currentGlossWords);
+              } else if (window.AvatarController) {
+                window.AvatarController.play();
+              }
+            }
+          });
+        });
+      }
+      if (pauseBtn) {
+        pauseBtn.addEventListener("click", () => {
+          chrome.storage.local.get(["translationMode"], (saved) => {
+            const mode = saved.translationMode || "avatar";
+            if (mode === "video") {
+              const video = el.querySelector("#sb-video-player");
+              if (video) video.pause();
+            } else {
+              if (window.AvatarController) window.AvatarController.pause();
+            }
+          });
+        });
+      }
+      if (resetBtn) {
+        resetBtn.addEventListener("click", () => {
+          chrome.storage.local.get(["translationMode"], (saved) => {
+            const mode = saved.translationMode || "avatar";
+            if (mode === "video") {
+              const video = el.querySelector("#sb-video-player");
+              if (video) {
+                video.currentTime = 0;
+                video.play();
+              }
+            } else {
+              if (window.SignBrowseGestureLibrary) {
+                window.SignBrowseGestureLibrary.reset();
+              } else if (window.AvatarController) {
+                window.AvatarController.resetPose();
+              }
+            }
+          });
+        });
+      }
+      if (testHeadBtn) {
+        testHeadBtn.addEventListener("click", () => {
+          if (window.SignBrowseGestureLibrary) {
+            window.SignBrowseGestureLibrary.testHead();
+          }
+        });
+      }
+      if (testArmBtn) {
+        testArmBtn.addEventListener("click", () => {
+          if (window.SignBrowseGestureLibrary) {
+            window.SignBrowseGestureLibrary.testRightArm();
+          }
+        });
+      }
+      if (testHandBtn) {
+        testHandBtn.addEventListener("click", () => {
+          if (window.SignBrowseGestureLibrary) {
+            window.SignBrowseGestureLibrary.testRightHand();
+          }
+        });
+      }
     }
 
-    return { init };
+    /**
+     * Triggers the translation pipeline and initializes Three.js.
+     */
+    async function runTranslationAndRender(text, el) {
+      const canvas = el.querySelector("#sb-avatar-canvas");
+      const loadingOverlay = el.querySelector("#sb-avatar-loading");
+      const errorOverlay = el.querySelector("#sb-avatar-error");
+      const loadedStatus = el.querySelector("#sb-status-avatar");
+      const container = el.querySelector("#sb-viewport-container");
+      const statusLLM = el.querySelector("#sb-status-llm");
+
+      // 1. Initialize the 3D Avatar only if we are in avatar translation mode
+      chrome.storage.local.get(["translationMode"], (saved) => {
+        const mode = saved.translationMode || "avatar";
+        if (mode === "avatar") {
+          if (window.AvatarController) {
+            window.AvatarController.initializeAvatar({
+              canvas,
+              loadingOverlay,
+              errorOverlay,
+              loadedStatus,
+              container
+            });
+          }
+        } else {
+          // Hide avatar overlays and canvas
+          if (loadingOverlay) loadingOverlay.classList.add("sb-hidden", "hidden");
+          if (canvas) canvas.style.display = "none";
+          
+          // Hide the manual bone test button row in video mode
+          const testRow = el.querySelector(".sb-playback-panel .sb-playback-row:nth-child(2)");
+          if (testRow) {
+            testRow.style.display = "none";
+          }
+          
+          if (loadedStatus) {
+            loadedStatus.textContent = "AI Video";
+            loadedStatus.className = "sb-status-indicator online";
+          }
+        }
+      });
+
+      // 2. Check LLM provider status
+      if (statusLLM && typeof chrome !== "undefined" && chrome.storage) {
+        chrome.storage.local.get(["aiProvider", "nvidiaApiKey", "ollamaEndpoint"], async (saved) => {
+          const provider = saved.aiProvider || "nvidia";
+          
+          if (provider === "nvidia") {
+            if (saved.nvidiaApiKey && saved.nvidiaApiKey.trim()) {
+              statusLLM.textContent = "NVIDIA";
+              statusLLM.className = "sb-status-indicator online";
+            } else {
+              statusLLM.textContent = "No Key";
+              statusLLM.className = "sb-status-indicator offline";
+            }
+          } else if (provider === "ollama") {
+            try {
+              const endpoint = saved.ollamaEndpoint || "http://localhost:11434/api/generate";
+              const baseUrl = endpoint.replace("/api/generate", "");
+              const response = await fetch(baseUrl, { method: "GET" });
+              if (response.ok) {
+                statusLLM.textContent = "Ollama";
+                statusLLM.className = "sb-status-indicator online";
+              } else {
+                statusLLM.textContent = "Offline";
+                statusLLM.className = "sb-status-indicator offline";
+              }
+            } catch (e) {
+              statusLLM.textContent = "Offline";
+              statusLLM.className = "sb-status-indicator offline";
+            }
+          } else {
+            statusLLM.textContent = "Cloud";
+            statusLLM.className = "sb-status-indicator online";
+          }
+        });
+      }
+
+      // 3. Trigger translation
+      triggerTranslation(text, el);
+    }
+
+    /**
+     * Triggers the translation pipeline via the background script.
+     */
+    function triggerTranslation(text, el) {
+      console.log("═══════════════════════════════════════════════════════════");
+      console.log("[SignBrowse Content] ▶ Step 1: triggerTranslation() called");
+      console.log("[SignBrowse Content]   Selected text:", JSON.stringify(text));
+
+      const glossOutput = el.querySelector("#sb-gloss-output");
+      const loadingOverlay = el.querySelector("#sb-avatar-loading");
+      const errorOverlay = el.querySelector("#sb-avatar-error");
+
+      if (glossOutput) {
+        glossOutput.innerHTML = '<span class="sb-placeholder">Translating...</span>';
+      }
+
+      /**
+       * Helper: clears ALL loading spinners / overlays regardless of outcome.
+       */
+      function clearLoadingStates() {
+        console.log("[SignBrowse Content]   Clearing loading states...");
+        if (loadingOverlay) {
+          loadingOverlay.classList.add("sb-hidden");
+        }
+      }
+
+      /**
+       * Helper: shows an error message in the gloss output.
+       */
+      function showError(message) {
+        clearLoadingStates();
+        if (glossOutput) {
+          glossOutput.innerHTML = `<span style="color:#ff6b6b; font-size: 11px;">⚠️ ${message}</span>`;
+        }
+      }
+
+      console.log("[SignBrowse Content] ▶ Step 2: Sending TRANSLATE_TO_ISL message to background...");
+
+      try {
+        chrome.runtime.sendMessage(
+          { type: "TRANSLATE_TO_ISL", payload: { text: text } },
+          (response) => {
+            console.log("[SignBrowse Content] ▶ Step 3: Background response received");
+
+            // Check for chrome runtime errors first
+            if (chrome.runtime.lastError) {
+              console.error("[SignBrowse Content] ✖ Step 3: chrome.runtime.lastError:", chrome.runtime.lastError.message);
+              showError(`Communication error: ${chrome.runtime.lastError.message}`);
+              return;
+            }
+
+            // Check if response is null/undefined (service worker may have died)
+            if (!response) {
+              console.error("[SignBrowse Content] ✖ Step 3: Response is null/undefined — service worker may have crashed");
+              showError("No response from background service. Try reloading the extension.");
+              return;
+            }
+
+            console.log("[SignBrowse Content]   response.status:", response.status);
+            console.log("[SignBrowse Content]   response.result:", response.result ? "present" : "missing");
+            console.log("[SignBrowse Content]   response.message:", response.message);
+            console.log("[SignBrowse Content]   response.errorCode:", response.errorCode);
+
+            if (response.status === "success" && response.result) {
+              const result = response.result;
+              console.log("[SignBrowse Content] ▶ Step 4: Translation success");
+              console.log("[SignBrowse Content]   result.success:", result.success);
+              console.log("[SignBrowse Content]   result.gloss:", JSON.stringify(result.gloss));
+              console.log("[SignBrowse Content]   result.provider:", result.provider);
+              console.log("[SignBrowse Content]   result.elapsed:", result.elapsed);
+
+              // Store the gloss words for replay
+              currentGlossWords = result.gloss || [];
+
+              // Render gloss pills
+              if (glossOutput) {
+                glossOutput.innerHTML = "";
+                if (currentGlossWords.length > 0) {
+                  console.log(`[SignBrowse Content] ▶ Step 5: Rendering ${currentGlossWords.length} gloss pills`);
+                  currentGlossWords.forEach((word) => {
+                    const pill = document.createElement("span");
+                    pill.className = "sb-gloss-pill";
+                    pill.textContent = word.toUpperCase();
+                    glossOutput.appendChild(pill);
+                  });
+
+                  // ─── Step 6: Play the sentence ───
+                  console.log("[SignBrowse Content] ▶ Step 6: Dispatching to gesture engine / video...");
+                  try {
+                    chrome.storage.local.get(["translationMode"], (saved) => {
+                      const mode = saved.translationMode || "avatar";
+                      console.log("[SignBrowse Content]   translationMode:", mode);
+
+                      if (mode === "video") {
+                        if (window.JSON2VideoService) {
+                          console.log("[SignBrowse Content]   → Calling JSON2VideoService.generateSignVideo()");
+                          const container = el.querySelector("#sb-viewport-container");
+                          window.JSON2VideoService.generateSignVideo(text, currentGlossWords.join(" "), container);
+                        } else {
+                          console.warn("[SignBrowse Content]   ⚠ JSON2VideoService not available");
+                        }
+                      } else {
+                        if (window.SignBrowseGestureMapper) {
+                          console.log("[SignBrowse Content] ▶ Step 7: Calling playSentence():", currentGlossWords);
+                          console.log("Animation Started");
+                          window.SignBrowseGestureMapper.playSentence(currentGlossWords);
+                          console.log("[SignBrowse Content] ✔ Step 7: playSentence() dispatched");
+                        } else {
+                          console.warn("[SignBrowse Content]   ⚠ SignBrowseGestureMapper not available");
+                        }
+                      }
+                    });
+                  } catch (playErr) {
+                    console.error("[SignBrowse Content] ✖ Step 6/7: Error starting playback:", playErr);
+                  }
+                } else {
+                  console.warn("[SignBrowse Content]   ⚠ Gloss array is empty");
+                  glossOutput.innerHTML = '<span class="sb-placeholder">No glosses returned.</span>';
+                }
+              }
+              // Clear loading even on success
+              clearLoadingStates();
+
+            } else {
+              // Error response from background
+              const err = response.message || "Translation failed.";
+              console.error("[SignBrowse Content] ✖ Step 4: Translation error:", err);
+              console.error("[SignBrowse Content]   errorCode:", response.errorCode);
+              showError(err);
+            }
+
+            console.log("═══════════════════════════════════════════════════════════");
+          }
+        );
+      } catch (sendErr) {
+        console.error("[SignBrowse Content] ✖ Step 2: chrome.runtime.sendMessage threw:", sendErr);
+        showError(`Failed to send message: ${sendErr.message}`);
+      }
+    }
+
+    /**
+     * Attaches keyboard event handlers (Escape key to close).
+     */
+    function attachKeyboardHandlers() {
+      const handleKeyDown = (e) => {
+        if (e.key === "Escape") {
+          closeOverlay("Escape key pressed");
+        }
+      };
+      document.addEventListener("keydown", handleKeyDown);
+      
+      // Store reference on overlay element for cleanup
+      if (overlayEl) {
+        overlayEl._keyboardHandler = handleKeyDown;
+      }
+    }
+
+    /**
+     * Closes the overlay and disposes of Three.js resources.
+     */
+    function closeOverlay(reason = "Explicit close action") {
+      if (overlayEl) {
+        if (overlayEl._keyboardHandler) {
+          document.removeEventListener("keydown", overlayEl._keyboardHandler);
+        }
+        overlayEl.remove();
+        console.log(`[SignBrowse Content] Overlay Removed. Reason: ${reason}`);
+        overlayEl = null;
+      }
+      if (window.AvatarController && window.AvatarController.dispose) {
+        window.AvatarController.dispose();
+      }
+    }
+
+    return {
+      init
+    };
 
   })();
 
+  // Run on injection
   SignBrowseOverlay.init();
 }

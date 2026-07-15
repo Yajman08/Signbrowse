@@ -7,8 +7,6 @@ const AvatarScene = (() => {
 
   function init() {
     scene = new THREE.Scene();
-    // Dark background matching the popup theme
-    scene.background = new THREE.Color(0x0f0f1a);
     return scene;
   }
 

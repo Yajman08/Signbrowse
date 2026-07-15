@@ -3,245 +3,138 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SignBrowse</title>
+  <title>SignBrowse Settings</title>
   <link rel="stylesheet" href="popup.css" />
 </head>
 <body>
-  <div class="popup-container">
+  <div class="settings-popup">
 
-    <!-- Header -->
-    <header class="popup-header">
-      <span class="popup-icon">🤟</span>
-      <div>
-        <h1 class="popup-title">SignBrowse</h1>
-        <p class="popup-version">v8.0 · Phase 8 (LLM-Driven ISL)</p>
+    <!-- ─── HEADER ─── -->
+    <header class="settings-header">
+      <div class="header-left">
+        <span class="settings-logo">🤟</span>
+        <div>
+          <h1 class="settings-title">SignBrowse</h1>
+          <p class="settings-subtitle">System Settings &amp; Preferences</p>
+        </div>
       </div>
     </header>
 
-    <!-- Status -->
-    <div class="status-card">
-      <div class="status-dot"></div>
-      <span>Extension active on all pages</span>
-    </div>
-
-    <!-- ═══ TRANSLATION PANEL ═══ -->
-    <section class="translation-panel">
-      <h2 class="section-title">Translate to ISL</h2>
-
-      <!-- AI Provider Selector -->
-      <div class="provider-selector">
-        <label class="provider-label" for="ai-provider">AI Provider</label>
-        <select id="ai-provider" class="provider-select">
-          <option value="ollama" selected>🦙 Ollama (Local · llama3.2)</option>
-          <option value="gemini">✨ Google Gemini (Cloud)</option>
+    <!-- ─── SETTINGS FORM ─── -->
+    <main class="settings-main">
+      <!-- AI Provider -->
+      <div class="settings-field">
+        <label for="ai-provider">AI Provider</label>
+        <select id="ai-provider" class="settings-select">
+          <option value="nvidia" selected>🟢 NVIDIA (Cloud)</option>
+          <option value="gemini">✨ Gemini (Cloud)</option>
+          <option value="ollama">🦙 Ollama (Local)</option>
         </select>
         <span id="provider-status" class="provider-status"></span>
       </div>
 
-      <!-- Input Area -->
-      <div class="translate-input-wrap">
-        <textarea
-          id="translate-input"
-          class="translate-textarea"
-          placeholder="Type or paste English text here..."
-          rows="3"
-        ></textarea>
-        <button id="translate-btn" class="translate-btn">
-          <span class="translate-btn-icon">🧠</span>
-          <span class="translate-btn-text">Translate to ISL</span>
-        </button>
+      <!-- Signer Selection -->
+      <div class="settings-field">
+        <label for="signer-select">Signer</label>
+        <select id="signer-select" class="settings-select">
+          <option value="aanya" selected>Aanya (Female)</option>
+          <option value="kabir">Kabir (Male)</option>
+        </select>
       </div>
 
-      <!-- Loading State -->
-      <div id="translate-loading" class="translate-loading hidden">
-        <div class="loading-spinner"></div>
-        <span class="loading-text">Sending to Gemini API...</span>
+      <!-- Translation Mode -->
+      <div class="settings-field">
+        <label for="translation-mode">Translation Mode</label>
+        <select id="translation-mode" class="settings-select">
+          <option value="avatar" selected>👤 3D Avatar (Realtime)</option>
+          <option value="video">🎥 AI Video (Experimental)</option>
+        </select>
       </div>
 
-      <!-- Error State -->
-      <div id="translate-error" class="translate-error hidden">
-        <span class="error-icon">⚠️</span>
-        <span id="translate-error-msg" class="error-msg"></span>
+      <!-- NVIDIA Configuration -->
+      <div class="settings-section-title">NVIDIA Settings</div>
+      <div class="settings-field">
+        <label for="nvidia-key">NVIDIA API Key</label>
+        <input type="password" id="nvidia-key" placeholder="Enter NVIDIA API Key" />
+        <span class="field-hint">Required. Uses meta/llama-3.1-8b-instruct.</span>
       </div>
 
-      <!-- Results Panel -->
-      <div id="translate-results" class="translate-results hidden">
-
-        <!-- Original Text -->
-        <div class="result-section">
-          <span class="result-label">Original</span>
-          <span id="result-original" class="result-value"></span>
-        </div>
-
-        <!-- ISL Gloss -->
-        <div class="result-section">
-          <span class="result-label">ISL Gloss</span>
-          <div id="result-gloss" class="gloss-pills"></div>
-        </div>
-
-        <!-- Motion Details (collapsible) -->
-        <details class="motion-details">
-          <summary class="motion-summary">
-            <span>📋 Motion JSON</span>
-            <span id="result-elapsed" class="elapsed-badge"></span>
-          </summary>
-          <pre id="result-json" class="result-json"></pre>
-        </details>
+      <!-- Gemini Configuration -->
+      <div class="settings-section-title">Gemini Settings</div>
+      <div class="settings-field">
+        <label for="gemini-key">Gemini API Key</label>
+        <input type="password" id="gemini-key" placeholder="Enter Gemini API Key" />
+        <span class="field-hint">Required when Gemini is selected.</span>
       </div>
 
-      <!-- Avatar Placeholder -->
-      <!-- Avatar 3D Panel -->
-      <div id="avatar-panel" class="avatar-panel">
-        <div class="avatar-container" style="position: relative; width: 400px; height: 400px; margin: 10px auto; background: #070712; border-radius: 12px; overflow: hidden; border: 1px solid rgba(108, 99, 255, 0.25);">
-          <div id="avatar-loading" class="avatar-loading-overlay" style="position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(7, 7, 18, 0.9); z-index: 2;">
-            <div class="loading-spinner"></div>
-            <span style="color: #a89bfe; font-size: 11px; margin-top: 8px;">Loading 3D Avatar...</span>
-          </div>
-          <div id="avatar-error" class="avatar-error-overlay hidden" style="position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(7, 7, 18, 0.9); z-index: 2; color: #ff6b6b; font-size: 12px;">
-            <span>⚠️ Unable to load avatar.</span>
-          </div>
-          <canvas id="avatar-canvas" width="400" height="400" style="display: block; width: 100%; height: 100%;"></canvas>
+      <!-- Ollama Configuration (Collapsed) -->
+      <details class="legacy-keys-details">
+        <summary>Ollama Settings (Local LLM)</summary>
+        <div class="settings-field">
+          <label for="ollama-model">Model</label>
+          <input type="text" id="ollama-model" placeholder="llama3.2" value="llama3.2" />
         </div>
-      </div>
-    </section>
-
-    <!-- Instructions -->
-    <section class="instructions">
-      <h2 class="section-title">How to use</h2>
-      <ol class="steps-list">
-        <li>
-          <span class="step-num">1</span>
-          <span>Select any text on a webpage</span>
-        </li>
-        <li>
-          <span class="step-num">2</span>
-          <span>Right-click the selected text</span>
-        </li>
-        <li>
-          <span class="step-num">3</span>
-          <span>Click <strong>"🤟 Translate to Sign Language"</strong></span>
-        </li>
-        <li>
-          <span class="step-num">4</span>
-          <span>A panel appears — drag it anywhere!</span>
-        </li>
-      </ol>
-    </section>
-
-    <!-- API Settings -->
-    <section class="api-settings">
-      <h2 class="section-title">API Settings</h2>
-
-      <!-- Gemini API Key (Primary) -->
-      <div class="api-field api-field-primary">
-        <div class="api-label-row">
-          <label for="gemini-key">Gemini API</label>
-          <span class="api-status missing" id="gemini-status">Missing Key</span>
-        </div>
-        <input type="password" id="gemini-key" placeholder="Enter Gemini API Key (from aistudio.google.com)" />
-      </div>
-
-      <details class="legacy-api-details">
-        <summary class="legacy-api-summary">Other API Keys (Legacy Video Providers)</summary>
-
-        <div class="api-field">
-          <div class="api-label-row">
-            <label for="veo-key">Google Veo</label>
-            <span class="api-status missing" id="veo-status">Missing Key</span>
-          </div>
-          <input type="password" id="veo-key" placeholder="Enter Google Veo / Vertex Key" />
-        </div>
-        <div class="api-field">
-          <div class="api-label-row">
-            <label for="veo-project">GCP Project ID</label>
-          </div>
-          <input type="text" id="veo-project" placeholder="Enter Google Cloud Project ID" />
-        </div>
-        <div class="api-field">
-          <div class="api-label-row">
-            <label for="veo-storage">GCS Storage URI</label>
-          </div>
-          <input type="text" id="veo-storage" placeholder="gs://your-bucket/output/" />
-        </div>
-        <div class="api-field">
-          <div class="api-label-row">
-            <label for="runway-key">Runway Gen-4</label>
-            <span class="api-status missing" id="runway-status">Missing Key</span>
-          </div>
-          <input type="password" id="runway-key" placeholder="Enter Runway API Key" />
-        </div>
-        <div class="api-field">
-          <div class="api-label-row">
-            <label for="kling-key">Kling AI</label>
-            <span class="api-status missing" id="kling-status">Missing Key</span>
-          </div>
-          <input type="password" id="kling-key" placeholder="Enter Kling AI API Key" />
-        </div>
-        <div class="api-field">
-          <div class="api-label-row">
-            <label for="luma-key">Luma Dream</label>
-            <span class="api-status missing" id="luma-status">Missing Key</span>
-          </div>
-          <input type="password" id="luma-key" placeholder="Enter Luma API Key" />
-        </div>
-        <div class="api-field">
-          <div class="api-label-row">
-            <label for="pika-key">Pika Labs</label>
-            <span class="api-status missing" id="pika-status">Missing Key</span>
-          </div>
-          <input type="password" id="pika-key" placeholder="Enter Pika API Key" />
+        <div class="settings-field">
+          <label for="ollama-endpoint">Endpoint</label>
+          <input type="text" id="ollama-endpoint" placeholder="http://localhost:11434/api/generate" value="http://localhost:11434/api/generate" />
         </div>
       </details>
 
-      <button id="save-keys-btn" class="save-btn">Save API Settings</button>
-    </section>
+      <!-- Legacy Keys (Collapsed) -->
+      <details class="legacy-keys-details">
+        <summary>Video Generation Settings (JSON2Video, Veo, etc.)</summary>
+        <div class="settings-field">
+          <label for="json2video-key">JSON2Video API Key</label>
+          <input type="password" id="json2video-key" placeholder="Enter JSON2Video API Key" />
+        </div>
+        <div class="settings-field">
+          <label for="veo-key">Google Veo Key</label>
+          <input type="password" id="veo-key" />
+        </div>
+        <div class="settings-field">
+          <label for="veo-project">GCP Project ID</label>
+          <input type="text" id="veo-project" />
+        </div>
+        <div class="settings-field">
+          <label for="veo-storage">GCS Storage URI</label>
+          <input type="text" id="veo-storage" />
+        </div>
+        <div class="settings-field">
+          <label for="runway-key">Runway Key</label>
+          <input type="password" id="runway-key" />
+        </div>
+        <div class="settings-field">
+          <label for="kling-key">Kling Key</label>
+          <input type="password" id="kling-key" />
+        </div>
+        <div class="settings-field">
+          <label for="luma-key">Luma Key</label>
+          <input type="password" id="luma-key" />
+        </div>
+        <div class="settings-field">
+          <label for="pika-key">Pika Key</label>
+          <input type="password" id="pika-key" />
+        </div>
+      </details>
+    </main>
 
-    <!-- Roadmap -->
-    <section class="roadmap">
-      <h2 class="section-title">Development Phases</h2>
-      <ul class="phase-list">
-        <li class="phase done">
-          <span class="phase-badge done-badge">Done</span>
-          <span>Phases 1-4 — Translation &amp; Grammar</span>
-        </li>
-        <li class="phase done">
-          <span class="phase-badge done-badge">Done</span>
-          <span>Phases 5-6 — Prompts &amp; Profiles</span>
-        </li>
-        <li class="phase done">
-          <span class="phase-badge done-badge">Done</span>
-          <span>Phase 7 — AI Video Integration</span>
-        </li>
-        <li class="phase active">
-          <span class="phase-badge current">Now</span>
-          <span>Phase 8 — LLM-Driven ISL Pipeline</span>
-        </li>
-      </ul>
-    </section>
-
-    <footer class="popup-footer">
-      Built with ♥ for accessibility
+    <!-- ─── FOOTER & SAVE ─── -->
+    <footer class="settings-footer">
+      <button id="save-keys-btn" class="settings-save-btn">Save Settings</button>
+      <p class="settings-info-text">
+        Highlight text on any webpage and select <strong>"Translate to Sign Language"</strong> from the right-click menu to open the 3D translation console.
+      </p>
     </footer>
+
   </div>
 
   <!-- Scripts: load service modules, then popup logic -->
   <script src="../services/gemini-service.js"></script>
   <script src="../services/ollama-service.js"></script>
+  <script src="../services/nvidiaLLM.js"></script>
   <script src="../services/ai-provider-manager.js"></script>
   <script src="../models/isl-parser.js"></script>
   <script src="../controllers/translation-controller.js"></script>
-
-  <!-- Three.js & GLTF Loader -->
-  <script src="../avatar/three.min.js"></script>
-  <script src="../avatar/GLTFLoader.js"></script>
-
-  <!-- Avatar Modules -->
-  <script src="../avatar/scene.js"></script>
-  <script src="../avatar/camera.js"></script>
-  <script src="../avatar/renderer.js"></script>
-  <script src="../avatar/lighting.js"></script>
-  <script src="../avatar/avatarLoader.js"></script>
-  <script src="../avatar/avatarController.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

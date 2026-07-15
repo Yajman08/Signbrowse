@@ -30,6 +30,11 @@ const SignBrowsePromptTemplates = (() => {
       id: "pika",
       name: "Pika Labs (Clean Loop)",
       template: "High-resolution educational sign language video of an {ethnicity} {gender} interpreter named {name} wearing {clothing}. Setting: {background}. Camera: {camera}. Framing: {framing}. Lighting: {lighting}. Style: {style}. The interpreter performs the ISL gloss string: \"{gloss}\". Clear details, seamless loops, accurate handshapes."
+    },
+    "json2video": {
+      id: "json2video",
+      name: "JSON2Video (Experimental)",
+      template: "Waist-up medium shot of an {ethnicity} {gender} signer named {name} translating sign language. The signer performs this exact Indian Sign Language (ISL) gloss: \"{gloss}\"."
     }
   };
 

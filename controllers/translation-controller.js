@@ -39,33 +39,60 @@ const TranslationController = (() => {
       // ── Stage 1: Validation ──
       if (onStart) onStart();
       if (onProgress) onProgress("validate", "Validating input...");
+      console.log("[TranslationController] ▶ Stage 1: Validating input...");
 
       if (!text || typeof text !== "string" || !text.trim()) {
+        console.error("[TranslationController] ✖ Stage 1: Empty input");
         throw { code: "EMPTY_INPUT", message: "No text provided for translation." };
       }
 
       const cleanText = text.trim();
-      console.log(`[TranslationController] Processing: "${cleanText.substring(0, 60)}..."`);
+      console.log(`[TranslationController] ✔ Stage 1: Input valid: "${cleanText.substring(0, 60)}..."`);
 
       // ── Stage 2: Route to active AI provider ──
+      console.log("[TranslationController] ▶ Stage 2: Resolving AI provider...");
       const providerManager = _getAIProviderManager();
       let providerName = "unknown";
 
       if (providerManager) {
         const info = await providerManager.getProviderInfo();
         providerName = info.name || info.id;
+        console.log(`[TranslationController] ✔ Stage 2: Provider resolved → ${providerName} (${info.id})`);
         if (onProgress) onProgress("api_call", `Sending to ${providerName}...`);
 
-        const rawResult = await providerManager.translate(cleanText);
+        console.log("[TranslationController] ▶ Stage 3: Calling providerManager.translate()...");
+        let rawResult;
+        try {
+          rawResult = await providerManager.translate(cleanText);
+        } catch (translateErr) {
+          console.error("[TranslationController] ✖ Stage 3: translate() threw:", translateErr);
+          console.error("[TranslationController]   Error name:", translateErr.name);
+          console.error("[TranslationController]   Error code:", translateErr.code);
+          console.error("[TranslationController]   Error message:", translateErr.message);
+          throw translateErr; // Re-throw to be caught by outer catch
+        }
 
-        // ── Stage 3: Parse & Validate ──
+        console.log("[TranslationController] ✔ Stage 3: translate() returned");
+        console.log("[TranslationController]   rawResult type:", typeof rawResult);
+        console.log("[TranslationController]   rawResult.gloss:", JSON.stringify(rawResult?.gloss));
+        console.log("[TranslationController]   rawResult.motions count:", rawResult?.motions?.length);
+
+        // ── Stage 4: Parse & Validate ──
+        console.log("[TranslationController] ▶ Stage 4: Validating ISL structure...");
         if (onProgress) onProgress("parse", "Parsing ISL response...");
 
         const parser = _getISLParser();
         let validation;
         if (parser) {
           validation = parser.validate(rawResult);
+          console.log("[TranslationController]   ISLParser.validate() result:", JSON.stringify({
+            valid: validation.valid,
+            errors: validation.errors,
+            warnings: validation.warnings,
+            glossCount: validation.data?.gloss?.length
+          }));
         } else {
+          console.warn("[TranslationController]   ISLParser not loaded — using basic validation");
           validation = {
             valid: !!(rawResult && rawResult.gloss),
             data: rawResult,
@@ -90,17 +117,18 @@ const TranslationController = (() => {
         };
 
         if (validation.errors.length > 0) {
-          console.warn("[TranslationController] Validation had errors:", validation.errors);
+          console.warn("[TranslationController] ⚠ Validation had errors:", validation.errors);
           result.success = validation.valid;
         }
 
-        console.log(`[TranslationController] Done in ${elapsed}s via ${providerName} — ${result.gloss.length} glosses`);
+        console.log(`[TranslationController] ✔ Stage 4: Done in ${elapsed}s via ${providerName} — ${result.gloss.length} glosses, success=${result.success}`);
 
         if (onComplete) onComplete(result);
         return result;
 
       } else {
         // Fallback: try GeminiService directly (backward compatibility)
+        console.warn("[TranslationController] ⚠ AIProviderManager not found, trying GeminiService fallback...");
         const geminiService = _resolve("GeminiService");
         if (geminiService) {
           providerName = "Gemini (fallback)";
@@ -129,11 +157,17 @@ const TranslationController = (() => {
           return result;
         }
 
+        console.error("[TranslationController] ✖ No AI provider available");
         throw { code: "SERVICE_UNAVAILABLE", message: "No AI provider available. AIProviderManager and GeminiService are both missing." };
       }
 
     } catch (error) {
       const elapsed = ((performance.now() - startTime) / 1000).toFixed(2);
+      console.error("[TranslationController] ✖ FAILED after " + elapsed + "s:", error);
+      console.error("[TranslationController]   Error type:", error?.constructor?.name || typeof error);
+      console.error("[TranslationController]   Error code:", error?.code);
+      console.error("[TranslationController]   Error message:", error?.message || String(error));
+
       const errorResult = {
         success: false,
         gloss: [],
@@ -147,8 +181,6 @@ const TranslationController = (() => {
         inputText: text,
         timestamp: new Date().toISOString()
       };
-
-      console.error("[TranslationController] Failed:", error);
 
       if (onError) onError(errorResult);
       return errorResult;

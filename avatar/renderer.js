@@ -9,7 +9,7 @@ const AvatarRenderer = (() => {
     renderer = new THREE.WebGLRenderer({
       canvas: canvas,
       antialias: true,
-      alpha: false,
+      alpha: true,
       powerPreference: "high-performance"
     });
     renderer.setSize(400, 400);

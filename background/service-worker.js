@@ -20,8 +20,10 @@ try {
     "../video-providers/kling-provider.js",
     "../video-providers/luma-provider.js",
     "../video-providers/pika-provider.js",
+    "../video-providers/json2video-provider.js",
     "../services/gemini-service.js",
     "../services/ollama-service.js",
+    "../services/nvidiaLLM.js",
     "../services/ai-provider-manager.js",
     "../models/isl-parser.js",
     "../controllers/translation-controller.js"
@@ -92,6 +94,18 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
             return chrome.scripting.executeScript({
               target: { tabId: tab.id },
               files: [
+                "avatar/three.min.js",
+                "avatar/fflate.min.js",
+                "avatar/GLTFLoader.js",
+                "avatar/FBXLoader.js",
+                "avatar/scene.js",
+                "avatar/camera.js",
+                "avatar/renderer.js",
+                "avatar/lighting.js",
+                "avatar/avatarLoader.js",
+                "avatar/avatarController.js",
+                "avatar/gestureLibrary.js",
+                "avatar/gestureMapper.js",
                 "engine/isl-dictionary.js",
                 "engine/grammar.js",
                 "engine/translator.js",
@@ -104,6 +118,8 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
                 "video-providers/kling-provider.js",
                 "video-providers/luma-provider.js",
                 "video-providers/pika-provider.js",
+                "video-providers/json2video-provider.js",
+                "services/json2videoService.js",
                 "engine/prompt-generator/video-request.js",
                 "engine/prompt-generator/prompt-generator.js",
                 "content/content.js"
@@ -205,12 +221,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       "runwayApiKey",
       "klingApiKey",
       "lumaApiKey",
-      "pikaApiKey"
+      "pikaApiKey",
+      "json2videoApiKey"
     ], async (keys) => {
       try {
         let providerInstance = null;
         
         switch (model) {
+          case "json2video":
+            providerInstance = new JSON2VideoProvider(keys.json2videoApiKey || "mock");
+            break;
           case "google-veo":
             providerInstance = new VeoVideoProvider(keys.veoApiKey || "mock", keys.veoProjectId, keys.veoStorageUri);
             break;
@@ -286,18 +306,47 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   } else if (message.type === "TRANSLATE_TO_ISL") {
     // ── Phase 8: LLM-Driven ISL Translation ──
     const { text } = message.payload;
-    console.log(`[SignBrowse SW] TRANSLATE_TO_ISL: "${text?.substring(0, 60)}..."`);
+    console.log("═══════════════════════════════════════════════════════════");
+    console.log(`[SignBrowse SW] ▶ TRANSLATE_TO_ISL received`);
+    console.log(`[SignBrowse SW]   Text: "${text?.substring(0, 80)}${(text?.length || 0) > 80 ? '...' : ''}"`);
 
     TranslationController.process(text, {
       onProgress: (stage, msg) => {
-        console.log(`[SignBrowse SW] Translation progress: ${stage} — ${msg}`);
+        console.log(`[SignBrowse SW]   Progress: ${stage} — ${msg}`);
       }
     }).then(result => {
-      console.log(`[SignBrowse SW] Translation complete: ${result.gloss?.length || 0} glosses in ${result.elapsed}s`);
-      sendResponse({ status: "success", result: result });
+      console.log("[SignBrowse SW] ▶ TranslationController.process() returned");
+      console.log("[SignBrowse SW]   result.success:", result.success);
+      console.log("[SignBrowse SW]   result.gloss:", JSON.stringify(result.gloss));
+      console.log("[SignBrowse SW]   result.provider:", result.provider);
+      console.log("[SignBrowse SW]   result.elapsed:", result.elapsed);
+      console.log("[SignBrowse SW]   result.errors:", JSON.stringify(result.errors));
+      console.log("[SignBrowse SW]   result.errorCode:", result.errorCode);
+
+      if (result.success && result.gloss && result.gloss.length > 0) {
+        console.log(`[SignBrowse SW] ✔ Translation succeeded: ${result.gloss.length} glosses in ${result.elapsed}s`);
+        sendResponse({ status: "success", result: result });
+      } else {
+        // TranslationController caught the error internally and returned { success: false }
+        const errMsg = (result.errors && result.errors.length > 0)
+          ? result.errors.join("; ")
+          : "Translation returned no glosses.";
+        console.error(`[SignBrowse SW] ✖ Translation failed: ${errMsg}`);
+        sendResponse({
+          status: "error",
+          message: errMsg,
+          errorCode: result.errorCode || "TRANSLATION_FAILED"
+        });
+      }
     }).catch(err => {
-      console.error("[SignBrowse SW] Translation failed:", err);
-      sendResponse({ status: "error", message: err.message, errorCode: err.code || "UNKNOWN" });
+      // This should rarely fire since TranslationController catches internally,
+      // but we handle it just in case for safety.
+      console.error("[SignBrowse SW] ✖ TranslationController.process() threw unexpectedly:", err);
+      sendResponse({
+        status: "error",
+        message: err.message || String(err),
+        errorCode: err.code || "UNEXPECTED"
+      });
     });
 
     return true; // async response
