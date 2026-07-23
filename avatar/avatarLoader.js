@@ -149,10 +149,14 @@ const AvatarLoader = (() => {
                   } else if (matName.includes("eye")) {
                     color = EYE_WHITE_COLOR; roughness = 0.1; metalness = 0.0;
                     console.log(`[AvatarLoader]   → EYE`);
-                  } else {
-                    // EVERYTHING ELSE = SKIN
+                  } else if (matName.includes("plastic") || matName.includes("body") || matName.includes("head") || nodeName.includes("body") || nodeName.includes("head") || matName.includes("skin") || nodeName.includes("skin")) {
+                    // Explicit skin matches (high-poly head uses "plastic" material)
                     color = SKIN_COLOR; roughness = 0.55; metalness = 0.1;
-                    console.log(`[AvatarLoader]   → SKIN`);
+                    console.log(`[AvatarLoader]   → SKIN (explicit match)`);
+                  } else {
+                    // EVERYTHING ELSE = SKIN (fallback)
+                    color = SKIN_COLOR; roughness = 0.55; metalness = 0.1;
+                    console.log(`[AvatarLoader]   → SKIN (fallback)`);
                   }
 
                   // Create a brand new material (no old state to fight)
@@ -244,7 +248,7 @@ const AvatarLoader = (() => {
 
           // Position camera centered on the avatar
           camera.position.set(0, targetY + 0.15, distance);
-          camera.lookAt(0, targetY - 0.05, 0);
+          camera.lookAt(0, targetY + 0.05, 0);
 
           resolve({ model, bones: boneMap, animations: gltf.animations || [] });
         },
