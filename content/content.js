@@ -106,19 +106,19 @@ if (typeof window.SignBrowseOverlay === "undefined") {
 
       const logo = document.createElement("span");
       logo.className = "sb-logo";
-      logo.textContent = "🤟 SignBrowse";
+      logo.textContent = "SignBrowse";
 
       const headerControls = document.createElement("div");
       headerControls.className = "sb-header-controls";
 
       const minBtn = document.createElement("button");
       minBtn.className = "sb-min-btn";
-      minBtn.title = "Minimize Console";
-      minBtn.textContent = "🗕";
+      minBtn.title = "Minimize";
+      minBtn.textContent = "─";
 
       const closeBtn = document.createElement("button");
       closeBtn.className = "sb-close-btn";
-      closeBtn.title = "Close Console";
+      closeBtn.title = "Close";
       closeBtn.textContent = "✕";
 
       headerControls.appendChild(minBtn);
@@ -131,26 +131,6 @@ if (typeof window.SignBrowseOverlay === "undefined") {
       const consoleBody = document.createElement("div");
       consoleBody.className = "sb-console-body";
       consoleBody.id = "sb-console-body";
-
-      // ── Selected English Text ──
-      const textPanel = document.createElement("div");
-      textPanel.className = "sb-panel sb-input-panel";
-      textPanel.innerHTML = `
-        <div class="sb-panel-label">English Input</div>
-        <div class="sb-selected-text">${originalText}</div>
-      `;
-      consoleBody.appendChild(textPanel);
-
-      // ── ISL Gloss Output ──
-      const glossPanel = document.createElement("div");
-      glossPanel.className = "sb-panel sb-output-panel";
-      glossPanel.innerHTML = `
-        <div class="sb-panel-label">ISL Gloss Sequence</div>
-        <div id="sb-gloss-output" class="sb-gloss-pills">
-          <span class="sb-placeholder">Waiting for translation...</span>
-        </div>
-      `;
-      consoleBody.appendChild(glossPanel);
 
       // ── Main Three.js Viewport ──
       const viewportPanel = document.createElement("div");
@@ -193,32 +173,8 @@ if (typeof window.SignBrowseOverlay === "undefined") {
           <button id="sb-play" class="sb-playback-btn" title="Play">▶ Play</button>
           <button id="sb-pause" class="sb-playback-btn" title="Pause">⏸ Pause</button>
         </div>
-        <div class="sb-playback-row" style="margin-top: 6px; display: flex; gap: 6px;">
-          <button id="sb-test-head" class="sb-playback-btn sb-test-btn" title="Test Head Rotation">👤 Head Test</button>
-          <button id="sb-test-arm" class="sb-playback-btn sb-test-btn" title="Test Right Arm Rotation">💪 Arm Test</button>
-          <button id="sb-test-hand" class="sb-playback-btn sb-test-btn" title="Test Right Hand/Finger Movement">✋ Hand Test</button>
-          <button id="sb-reset" class="sb-playback-btn" title="Reset Pose">🔄 Reset Pose</button>
-        </div>
       `;
       consoleBody.appendChild(playbackPanel);
-
-      // ── Status Bar ──
-      const statusBar = document.createElement("div");
-      statusBar.className = "sb-status-bar";
-      statusBar.innerHTML = `
-        <div class="sb-status-item">
-          <span>Avatar:</span>
-          <span id="sb-status-avatar" class="sb-status-indicator offline">Offline</span>
-        </div>
-        <div class="sb-status-item">
-          <span>LLM:</span>
-          <span id="sb-status-llm" class="sb-status-indicator offline">Offline</span>
-        </div>
-        <div class="sb-status-item sb-fps-item">
-          <span class="sb-fps-text">FPS: --</span>
-        </div>
-      `;
-      consoleBody.appendChild(statusBar);
 
       wrapper.appendChild(consoleBody);
       return wrapper;
@@ -230,7 +186,7 @@ if (typeof window.SignBrowseOverlay === "undefined") {
     function positionOverlay(el) {
       // Default to top-right of the window
       el.style.top = "80px";
-      el.style.right = "40px";
+      el.style.right = "32px";
       el.style.left = "auto";
       el.style.bottom = "auto";
 
@@ -240,15 +196,15 @@ if (typeof window.SignBrowseOverlay === "undefined") {
         const range = selection.getRangeAt(0);
         const rect = range.getBoundingClientRect();
         if (rect.width > 0 && rect.height > 0) {
-          // Place 20px below selection or to the right
-          const targetTop = rect.bottom + window.scrollY + 20;
+          // Place 16px below selection or to the right
+          const targetTop = rect.bottom + window.scrollY + 16;
           const targetLeft = Math.min(
             rect.left + window.scrollX,
-            window.innerWidth - 440
+            window.innerWidth - 360
           );
           
           // Verify bounds
-          if (targetTop + 550 < window.innerHeight + window.scrollY) {
+          if (targetTop + 540 < window.innerHeight + window.scrollY) {
             el.style.top = `${targetTop}px`;
             el.style.left = `${targetLeft}px`;
             el.style.right = "auto";
@@ -303,25 +259,29 @@ if (typeof window.SignBrowseOverlay === "undefined") {
       const consoleBody = el.querySelector(".sb-console-body");
 
       // Close console
-      closeBtn.addEventListener("click", () => {
-        closeOverlay();
-      });
+      if (closeBtn) {
+        closeBtn.addEventListener("click", () => {
+          closeOverlay();
+        });
+      }
 
       // Minimize/Maximize console
-      minBtn.addEventListener("click", () => {
-        isMinimized = !isMinimized;
-        if (isMinimized) {
-          consoleBody.style.display = "none";
-          el.style.height = "auto";
-          minBtn.textContent = "🗖";
-          minBtn.title = "Restore Console";
-        } else {
-          consoleBody.style.display = "flex";
-          el.style.height = "";
-          minBtn.textContent = "🗕";
-          minBtn.title = "Minimize Console";
-        }
-      });
+      if (minBtn && consoleBody) {
+        minBtn.addEventListener("click", () => {
+          isMinimized = !isMinimized;
+          if (isMinimized) {
+            consoleBody.style.display = "none";
+            el.style.height = "auto";
+            minBtn.textContent = "🗖";
+            minBtn.title = "Restore Console";
+          } else {
+            consoleBody.style.display = "flex";
+            el.style.height = "";
+            minBtn.textContent = "🗕";
+            minBtn.title = "Minimize Console";
+          }
+        });
+      }
 
       // Playback Controls
       const playBtn = el.querySelector("#sb-play");
@@ -513,12 +473,14 @@ if (typeof window.SignBrowseOverlay === "undefined") {
       }
 
       /**
-       * Helper: shows an error message in the gloss output.
+       * Helper: shows an error message in the viewport overlay.
        */
       function showError(message) {
         clearLoadingStates();
-        if (glossOutput) {
-          glossOutput.innerHTML = `<span style="color:#ff6b6b; font-size: 11px;">⚠️ ${message}</span>`;
+        const errOverlay = el.querySelector("#sb-avatar-error");
+        if (errOverlay) {
+          errOverlay.innerHTML = `<span style="padding: 12px; text-align: center; line-height: 1.4; color: #ff6b6b;">⚠️ ${message}</span>`;
+          errOverlay.classList.remove("sb-hidden", "hidden");
         }
       }
 

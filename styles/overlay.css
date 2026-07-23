@@ -1,36 +1,46 @@
 /* ══════════════════════════════════════════════════════════════════════════════
- *  SignBrowse Webpage Overlay Console Styles — v9.0
+ *  SignBrowse Overlay — Material Design 3 • v10.0
  * ══════════════════════════════════════════════════════════════════════════════ */
+
+/* ── Google Fonts: Inter ── */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
 /* ── Main Container ── */
 #signbrowse-overlay.sb-overlay-console {
   position: fixed;
-  width: 400px;
-  height: 550px;
-  min-width: 320px;
+  width: 340px;
+  height: 520px;
+  min-width: 300px;
   min-height: 400px;
-  max-width: 600px;
-  max-height: 800px;
-  background: #05050d;
-  border: 1px solid rgba(108, 99, 255, 0.35);
-  border-radius: 14px;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6), 0 0 20px rgba(108, 99, 255, 0.15);
+  max-width: 420px;
+  max-height: 640px;
+  background: linear-gradient(180deg, #12141D 0%, #0D0F17 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 20px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
   display: flex;
   flex-direction: column;
   overflow: hidden;
   z-index: 2147483647;
   resize: both;
-  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-  color: #e2e2e9;
-  font-size: 12px;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  color: #e8eaed;
+  font-size: 13px;
+  font-weight: 500;
   line-height: 1.4;
-  animation: sb-fade-in 0.25s ease-out;
+  animation: sb-open 180ms cubic-bezier(0.2, 0, 0, 1) forwards;
   user-select: none;
 }
 
-@keyframes sb-fade-in {
-  from { opacity: 0; transform: scale(0.95); }
-  to { opacity: 1; transform: scale(1); }
+@keyframes sb-open {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 .sb-hidden {
@@ -43,63 +53,75 @@
   height: 4px;
 }
 #signbrowse-overlay.sb-overlay-console ::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.02);
+  background: transparent;
 }
 #signbrowse-overlay.sb-overlay-console ::-webkit-scrollbar-thumb {
-  background: rgba(108, 99, 255, 0.3);
+  background: rgba(255, 255, 255, 0.12);
   border-radius: 4px;
 }
 
-/* ── Header ── */
+/* ══════════════════════════════════════════════════════════════════════════════
+ *  HEADER — Compact Material Design 3
+ * ══════════════════════════════════════════════════════════════════════════════ */
 #signbrowse-overlay.sb-overlay-console .sb-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 16px;
-  background: linear-gradient(180deg, #0d0d1f 0%, #070712 100%);
-  border-bottom: 1px solid rgba(108, 99, 255, 0.2);
+  padding: 0 16px;
+  background: transparent;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   cursor: grab;
-  height: 44px;
+  height: 48px;
   flex-shrink: 0;
 }
 
 #signbrowse-overlay.sb-overlay-console .sb-logo {
-  font-size: 13px;
-  font-weight: 800;
+  font-size: 14px;
+  font-weight: 700;
   color: #ffffff;
-  letter-spacing: 0.5px;
-  filter: drop-shadow(0 0 6px rgba(108, 99, 255, 0.5));
+  letter-spacing: 0.2px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 #signbrowse-overlay.sb-overlay-console .sb-header-controls {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
 }
 
 #signbrowse-overlay.sb-overlay-console .sb-min-btn,
 #signbrowse-overlay.sb-overlay-console .sb-close-btn {
   background: transparent;
   border: none;
-  color: #5f5f7a;
-  font-size: 12px;
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 16px;
   cursor: pointer;
-  padding: 4px 6px;
-  border-radius: 4px;
-  transition: all 0.2s;
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  transition: background 180ms ease, color 180ms ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
 }
 
 #signbrowse-overlay.sb-overlay-console .sb-min-btn:hover {
-  color: #a89bfe;
-  background: rgba(108, 99, 255, 0.15);
+  color: rgba(255, 255, 255, 0.8);
+  background: rgba(255, 255, 255, 0.08);
 }
 
 #signbrowse-overlay.sb-overlay-console .sb-close-btn:hover {
-  color: #ff6b6b;
-  background: rgba(255, 107, 107, 0.15);
+  color: #f28b82;
+  background: rgba(242, 139, 130, 0.12);
 }
 
-/* ── Console Body ── */
+/* ══════════════════════════════════════════════════════════════════════════════
+ *  CONSOLE BODY
+ * ══════════════════════════════════════════════════════════════════════════════ */
 #signbrowse-overlay.sb-overlay-console .sb-console-body {
   display: flex;
   flex-direction: column;
@@ -110,24 +132,24 @@
 /* ── Panels ── */
 #signbrowse-overlay.sb-overlay-console .sb-panel {
   padding: 8px 16px;
-  background: #070712;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  background: transparent;
+  border-bottom: none;
   flex-shrink: 0;
 }
 
 #signbrowse-overlay.sb-overlay-console .sb-panel-label {
-  font-size: 8px;
-  font-weight: 700;
-  color: #6c63ff;
+  font-size: 10px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.4);
   text-transform: uppercase;
-  letter-spacing: 0.8px;
+  letter-spacing: 0.6px;
   margin-bottom: 4px;
 }
 
 /* Selected English Text */
 #signbrowse-overlay.sb-overlay-console .sb-selected-text {
-  font-size: 11px;
-  color: #ccc;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.7);
   line-height: 1.4;
   word-break: break-word;
   max-height: 48px;
@@ -145,23 +167,23 @@
 }
 
 #signbrowse-overlay.sb-overlay-console .sb-placeholder {
-  font-size: 10px;
-  color: #444;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.25);
   font-style: italic;
 }
 
 #signbrowse-overlay.sb-overlay-console .sb-gloss-pill {
   display: inline-flex;
   align-items: center;
-  background: rgba(108, 99, 255, 0.12);
-  border: 1px solid rgba(108, 99, 255, 0.3);
-  color: #a89bfe;
-  padding: 2px 8px;
+  background: rgba(66, 133, 244, 0.1);
+  border: 1px solid rgba(66, 133, 244, 0.2);
+  color: #8ab4f8;
+  padding: 2px 10px;
   border-radius: 12px;
   font-size: 10px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.3px;
-  animation: sb-pill-appear 0.25s ease-out;
+  animation: sb-pill-appear 200ms ease-out;
 }
 
 @keyframes sb-pill-appear {
@@ -169,12 +191,14 @@
   to { opacity: 1; transform: scale(1); }
 }
 
-/* ── Viewport Panel (Main 3D Area) ── */
+/* ══════════════════════════════════════════════════════════════════════════════
+ *  VIEWPORT — Main 3D Avatar Area (~85-90% of space)
+ * ══════════════════════════════════════════════════════════════════════════════ */
 #signbrowse-overlay.sb-overlay-console .sb-viewport-panel {
   flex-grow: 1;
   flex-shrink: 1;
-  padding: 10px 16px;
-  background: #05050d;
+  padding: 0;
+  background: transparent;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -184,12 +208,11 @@
 #signbrowse-overlay.sb-overlay-console .sb-viewport-container {
   width: 100%;
   height: 100%;
-  background: radial-gradient(circle at center, #0f0f2d 0%, #070712 100%);
-  border: 1px solid rgba(108, 99, 255, 0.25);
-  border-radius: 12px;
+  background: radial-gradient(ellipse at 50% 40%, #1a1c2e 0%, #0D0F17 70%);
+  border: none;
+  border-radius: 0;
   position: relative;
   overflow: hidden;
-  box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.8);
 }
 
 #signbrowse-overlay.sb-overlay-console #sb-avatar-canvas {
@@ -198,7 +221,7 @@
   display: block;
 }
 
-/* Overlays */
+/* Loading & Error Overlays */
 #signbrowse-overlay.sb-overlay-console .sb-viewport-overlay {
   position: absolute;
   inset: 0;
@@ -206,97 +229,86 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: rgba(7, 7, 18, 0.85);
-  backdrop-filter: blur(4px);
+  background: rgba(13, 15, 23, 0.9);
+  backdrop-filter: blur(6px);
   z-index: 5;
-  gap: 8px;
-  color: #a89bfe;
-  font-weight: 600;
+  gap: 10px;
+  color: rgba(255, 255, 255, 0.6);
+  font-weight: 500;
+  font-size: 12px;
 }
 
 #signbrowse-overlay.sb-overlay-console .error-overlay {
-  color: #ff6b6b;
+  color: #f28b82;
 }
 
 #signbrowse-overlay.sb-overlay-console .sb-loading-spinner {
-  width: 20px;
-  height: 20px;
-  border: 2px solid rgba(108, 99, 255, 0.2);
-  border-top-color: #6c63ff;
+  width: 24px;
+  height: 24px;
+  border: 2.5px solid rgba(66, 133, 244, 0.15);
+  border-top-color: #4285F4;
   border-radius: 50%;
-  animation: sb-spin 0.8s linear infinite;
+  animation: sb-spin 0.7s linear infinite;
 }
 
 @keyframes sb-spin {
   to { transform: rotate(360deg); }
 }
 
-/* ── Playback Controls ── */
+/* ══════════════════════════════════════════════════════════════════════════════
+ *  PLAYBACK CONTROLS — Play / Pause
+ * ══════════════════════════════════════════════════════════════════════════════ */
 #signbrowse-overlay.sb-overlay-console .sb-playback-panel {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 8px 16px;
-  border-top: 1px solid rgba(255, 255, 255, 0.02);
+  gap: 0;
+  padding: 8px 16px 12px 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
   flex-shrink: 0;
 }
 
 #signbrowse-overlay.sb-overlay-console .sb-playback-row {
   display: flex;
-  gap: 6px;
+  gap: 8px;
   width: 100%;
 }
 
 #signbrowse-overlay.sb-overlay-console .sb-playback-btn {
   flex: 1;
-  background: rgba(108, 99, 255, 0.08);
-  border: 1px solid rgba(108, 99, 255, 0.25);
-  border-radius: 6px;
-  color: #a89bfe;
-  font-size: 10px;
-  font-weight: 700;
-  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  color: rgba(255, 255, 255, 0.8);
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 0;
+  height: 40px;
   cursor: pointer;
   outline: none;
-  transition: all 0.2s;
+  transition: background 180ms ease, border-color 180ms ease, color 180ms ease;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  gap: 6px;
 }
 
 #signbrowse-overlay.sb-overlay-console .sb-playback-btn:hover {
-  background: rgba(108, 99, 255, 0.2);
-  border-color: #6c63ff;
-  color: #ffffff;
-  box-shadow: 0 0 8px rgba(108, 99, 255, 0.3);
+  background: rgba(66, 133, 244, 0.12);
+  border-color: rgba(66, 133, 244, 0.25);
+  color: #8ab4f8;
 }
 
-#signbrowse-overlay.sb-overlay-console .sb-test-btn {
-  background: rgba(255, 101, 163, 0.08);
-  border-color: rgba(255, 101, 163, 0.25);
-  color: #ff8ebb;
+#signbrowse-overlay.sb-overlay-console .sb-playback-btn:active {
+  background: rgba(66, 133, 244, 0.2);
+  transform: scale(0.98);
 }
 
-#signbrowse-overlay.sb-overlay-console .sb-test-btn:hover {
-  background: rgba(255, 101, 163, 0.2);
-  border-color: #ff65a3;
-  color: #ffffff;
-  box-shadow: 0 0 8px rgba(255, 101, 163, 0.3);
-}
-
-/* ── Status Bar ── */
+/* ══════════════════════════════════════════════════════════════════════════════
+ *  STATUS BAR (hidden in production, visible in dev mode)
+ * ══════════════════════════════════════════════════════════════════════════════ */
 #signbrowse-overlay.sb-overlay-console .sb-status-bar {
-  display: flex;
-  align-items: center;
-  padding: 0 16px;
-  background: #04040a;
-  border-top: 1px solid rgba(108, 99, 255, 0.15);
-  height: 26px;
-  font-size: 8px;
-  font-family: monospace;
-  color: #5f5f7a;
-  flex-shrink: 0;
+  display: none;
 }
 
 #signbrowse-overlay.sb-overlay-console .sb-status-item {
@@ -307,26 +319,26 @@
 }
 
 #signbrowse-overlay.sb-overlay-console .sb-status-indicator {
-  font-weight: 700;
+  font-weight: 600;
   text-transform: uppercase;
-  font-size: 7px;
-  padding: 0px 3px;
-  border-radius: 2px;
+  font-size: 8px;
+  padding: 1px 4px;
+  border-radius: 3px;
 }
 
 #signbrowse-overlay.sb-overlay-console .sb-status-indicator.online {
-  background: rgba(16, 185, 129, 0.1);
-  color: #10b981;
+  background: rgba(52, 168, 83, 0.12);
+  color: #81c995;
 }
 
 #signbrowse-overlay.sb-overlay-console .sb-status-indicator.offline {
-  background: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
+  background: rgba(234, 67, 53, 0.12);
+  color: #f28b82;
 }
 
 #signbrowse-overlay.sb-overlay-console .sb-status-indicator.loading {
-  background: rgba(245, 158, 11, 0.1);
-  color: #f59e0b;
+  background: rgba(251, 188, 4, 0.12);
+  color: #fdd663;
 }
 
 #signbrowse-overlay.sb-overlay-console .sb-fps-item {
@@ -335,6 +347,11 @@
 }
 
 #signbrowse-overlay.sb-overlay-console .sb-fps-text {
-  color: #6c63ff;
-  font-weight: 700;
+  color: #8ab4f8;
+  font-weight: 600;
+}
+
+/* ── Test buttons (hidden in production) ── */
+#signbrowse-overlay.sb-overlay-console .sb-test-btn {
+  display: none;
 }

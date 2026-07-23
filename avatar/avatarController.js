@@ -108,11 +108,14 @@ const AvatarController = (() => {
       // Initialize AnimationMixer for FBX animations
       mixer = new THREE.AnimationMixer(avatarModel);
 
-      // ── 6. Store the original binding rotations of every bone ──
+      // ── 6. Store the original bind pose rotations of every bone as loaded from GLB ──
       Object.keys(boneMap).forEach(name => {
         originalRotations[name] = boneMap[name].rotation.clone();
       });
-      console.log(`[AvatarController] Cached original rotations for ${Object.keys(originalRotations).length} bones.`);
+      console.log(`[AvatarController] Cached original bind pose rotations for ${Object.keys(originalRotations).length} bones.`);
+
+      // ── 7. Apply neutral standing pose or autoplay idle clip ──
+      applyNeutralIdlePose();
 
       // Add to scene and log
       scene.add(avatarModel);
@@ -382,20 +385,19 @@ const AvatarController = (() => {
     // Clear any active transitions
     activeTransitions.length = 0;
 
-    // Restore original bone rotations
-    Object.keys(boneMap).forEach(name => {
-      const bone = boneMap[name];
-      const original = originalRotations[name];
-      if (bone && original) {
-        bone.rotation.copy(original);
-      }
-    });
+    // Stop all running mixer actions so animations don't fight the pose
+    if (mixer) {
+      mixer.stopAllAction();
+    }
 
     // Reset base model rotation
     if (avatarModel) {
       avatarModel.rotation.set(0, 0, 0);
     }
-    console.log("[AvatarController] Pose and skeleton reset to original T-pose.");
+
+    // Apply the neutral idle pose instead of the raw T-pose
+    applyNeutralIdlePose();
+    console.log("[AvatarController] Pose reset to neutral idle stance.");
   }
 
   /**
@@ -605,6 +607,143 @@ const AvatarController = (() => {
     mixer = null;
     // Clear cached rotations
     Object.keys(originalRotations).forEach(key => delete originalRotations[key]);
+  }
+
+  /**
+   * Creates a neutral idle pose using only the upper arm and forearm bones,
+   * avoiding spine/chest/neck/head/root/hips distortion.
+   * If the model contains an Idle animation clip, automatically play it instead.
+   */
+  function applyNeutralIdlePose() {
+    if (!avatarModel) return;
+
+    // Print all arm-related bones and their initial rotations
+    const debugBones = [
+      "LeftShoulder", "LeftArm", "LeftForeArm", "LeftHand",
+      "RightShoulder", "RightArm", "RightForeArm", "RightHand"
+    ];
+    console.log("=== Initial Rotations of Arm-Related Bones ===");
+    debugBones.forEach(name => {
+      const bone = getBone(name);
+      if (bone) {
+        console.log(`Bone: ${name} (Model name: ${bone.name})`);
+        console.log(`  Local position: [${bone.position.toArray().map(v => v.toFixed(6)).join(", ")}]`);
+        console.log(`  Local rotation (Euler XYZ): [${bone.rotation.x.toFixed(6)}, ${bone.rotation.y.toFixed(6)}, ${bone.rotation.z.toFixed(6)}]`);
+        console.log(`  Local quaternion: [${bone.quaternion.toArray().map(v => v.toFixed(6)).join(", ")}]`);
+      } else {
+        console.log(`Bone: ${name} NOT FOUND`);
+      }
+    });
+    console.log("==============================================");
+
+    // 1. Check for an Idle animation clip first
+    const idleClip = animations.find(clip => clip.name.toLowerCase().includes("idle"));
+    if (idleClip) {
+      console.log(`[AvatarController] Idle animation found: "${idleClip.name}". Playing automatically.`);
+      const action = mixer.clipAction(idleClip);
+      action.play();
+      return;
+    }
+
+    console.log("[AvatarController] No Idle animation found in GLB. Creating procedural neutral idle pose using world-space rotations...");
+
+    // Get the upper arm and forearm bones
+    const leftArm = getBone("LeftArm");
+    const rightArm = getBone("RightArm");
+    const leftForearm = getBone("LeftForeArm");
+    const rightForearm = getBone("RightForeArm");
+
+    if (!leftArm || !rightArm || !leftForearm || !rightForearm) {
+      console.warn("[AvatarController] One or more arm bones not found. Leaving original bind pose unchanged.");
+      return;
+    }
+
+    try {
+      // Ensure world matrices are up-to-date
+      avatarModel.updateMatrixWorld(true);
+
+      const worldX = new THREE.Vector3(1, 0, 0);
+      const worldY = new THREE.Vector3(0, 1, 0);
+      const worldZ = new THREE.Vector3(0, 0, 1);
+
+      // ── Left Arm ──
+      // Swing Left Arm DOWN (about world Z by -80° = -1.4 rad) and slightly forward (about world Y by -12° = -0.2 rad)
+      const leftArmParentQuat = new THREE.Quaternion();
+      leftArm.parent.getWorldQuaternion(leftArmParentQuat);
+      const leftArmParentQuatInv = leftArmParentQuat.clone().invert();
+
+      const leftArmAxisZ = worldZ.clone().applyQuaternion(leftArmParentQuatInv).normalize();
+      const leftArmAxisY = worldY.clone().applyQuaternion(leftArmParentQuatInv).normalize();
+
+      const leftArmRotZ = new THREE.Quaternion().setFromAxisAngle(leftArmAxisZ, -1.4);
+      const leftArmRotY = new THREE.Quaternion().setFromAxisAngle(leftArmAxisY, -0.2);
+
+      const origLeftArm = originalRotations[leftArm.name] || leftArm.rotation.clone();
+      const leftArmQuat = new THREE.Quaternion().setFromEuler(origLeftArm);
+      leftArm.quaternion.copy(leftArmRotY.multiply(leftArmRotZ).multiply(leftArmQuat));
+
+      // ── Right Arm ──
+      // Swing Right Arm DOWN (about world Z by +80° = +1.4 rad) and slightly forward (about world Y by +12° = 0.2 rad)
+      const rightArmParentQuat = new THREE.Quaternion();
+      rightArm.parent.getWorldQuaternion(rightArmParentQuat);
+      const rightArmParentQuatInv = rightArmParentQuat.clone().invert();
+
+      const rightArmAxisZ = worldZ.clone().applyQuaternion(rightArmParentQuatInv).normalize();
+      const rightArmAxisY = worldY.clone().applyQuaternion(rightArmParentQuatInv).normalize();
+
+      const rightArmRotZ = new THREE.Quaternion().setFromAxisAngle(rightArmAxisZ, 1.4);
+      const rightArmRotY = new THREE.Quaternion().setFromAxisAngle(rightArmAxisY, 0.2);
+
+      const origRightArm = originalRotations[rightArm.name] || rightArm.rotation.clone();
+      const rightArmQuat = new THREE.Quaternion().setFromEuler(origRightArm);
+      rightArm.quaternion.copy(rightArmRotY.multiply(rightArmRotZ).multiply(rightArmQuat));
+
+      // Update world matrices for forearm calculation
+      avatarModel.updateMatrixWorld(true);
+
+      // ── Left Forearm ──
+      // Bend Left Forearm forward (about parent-projected world X by +14° = 0.25 rad)
+      const leftForearmParentQuat = new THREE.Quaternion();
+      leftForearm.parent.getWorldQuaternion(leftForearmParentQuat);
+      const leftForearmParentQuatInv = leftForearmParentQuat.clone().invert();
+
+      const leftForearmAxisX = worldX.clone().applyQuaternion(leftForearmParentQuatInv).normalize();
+      const leftForearmRotX = new THREE.Quaternion().setFromAxisAngle(leftForearmAxisX, 0.25);
+
+      const origLeftForearm = originalRotations[leftForearm.name] || leftForearm.rotation.clone();
+      const leftForearmQuat = new THREE.Quaternion().setFromEuler(origLeftForearm);
+      leftForearm.quaternion.copy(leftForearmRotX.multiply(leftForearmQuat));
+
+      // ── Right Forearm ──
+      // Bend Right Forearm forward (about parent-projected world X by +14° = 0.25 rad)
+      const rightForearmParentQuat = new THREE.Quaternion();
+      rightForearm.parent.getWorldQuaternion(rightForearmParentQuat);
+      const rightForearmParentQuatInv = rightForearmParentQuat.clone().invert();
+
+      const rightForearmAxisX = worldX.clone().applyQuaternion(rightForearmParentQuatInv).normalize();
+      const rightForearmRotX = new THREE.Quaternion().setFromAxisAngle(rightForearmAxisX, 0.25);
+
+      const origRightForearm = originalRotations[rightForearm.name] || rightForearm.rotation.clone();
+      const rightForearmQuat = new THREE.Quaternion().setFromEuler(origRightForearm);
+      rightForearm.quaternion.copy(rightForearmRotX.multiply(rightForearmQuat));
+
+      // Update originalRotations registry to make plays/resets return to this pose
+      Object.keys(boneMap).forEach(name => {
+        originalRotations[name] = boneMap[name].rotation.clone();
+      });
+
+      console.log("[AvatarController] Procedural neutral standing pose applied successfully.");
+    } catch (error) {
+      console.error("[AvatarController] Failed to generate procedural neutral pose safely. Restoring original bind pose.", error);
+      // Restore original bind pose
+      Object.keys(boneMap).forEach(name => {
+        const bone = boneMap[name];
+        const original = originalRotations[name];
+        if (bone && original) {
+          bone.rotation.copy(original);
+        }
+      });
+    }
   }
 
   return {

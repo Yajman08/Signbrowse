@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <script src="avatar/three.min.js"></script>
+  <script src="avatar/GLTFLoader.js"></script>
+</head>
+<body>
+  <h2>SignBrowse Bone Inspection</h2>
+  <script>
+    const loader = new THREE.GLTFLoader();
+    loader.load('assets/bingo.glb', (gltf) => {
+      const model = gltf.scene;
+      console.log('--- BONE INSPECTION RESULTS ---');
+      const bones = [];
+      model.traverse(node => {
+        if (node.isBone) {
+          bones.push(node);
+        }
+      });
+      
+      const armBones = [
+        'LeftShoulder', 'shoulderL',
+        'LeftArm', 'upperarmL',
+        'LeftForeArm', 'forearmL',
+        'LeftHand', 'handL',
+        'RightShoulder', 'shoulderR',
+        'RightArm', 'upperarmR',
+        'RightForeArm', 'forearmR',
+        'RightHand', 'handR'
+      ];
+      
+      armBones.forEach(name => {
+        // Find matching bone case-insensitive or by exact name
+        const bone = bones.find(b => b.name.toLowerCase() === name.toLowerCase());
+        if (bone) {
+          console.log(`BONE_INFO: ${name} (Actual Name: ${bone.name})`);
+          console.log(`  Local Position: [${bone.position.toArray().map(v => v.toFixed(6)).join(', ')}]`);
+          console.log(`  Local Rotation Euler: [${bone.rotation.toArray().slice(0,3).map(v => v.toFixed(6)).join(', ')}] order="${bone.rotation.order}"`);
+          console.log(`  Local Quaternion: [${bone.quaternion.toArray().map(v => v.toFixed(6)).join(', ')}]`);
+          if (bone.parent) {
+            console.log(`  Parent Bone: ${bone.parent.name}`);
+          }
+        } else {
+          console.log(`BONE_INFO: ${name} NOT FOUND`);
+        }
+      });
+      console.log('--- END BONE INSPECTION ---');
+    }, undefined, (err) => {
+      console.error('Error loading model:', err);
+    });
+  </script>
+</body>
+</html>

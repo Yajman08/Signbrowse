@@ -96,15 +96,85 @@ const AvatarLoader = (() => {
             console.log(name);
           });
 
-          // Enable shadows on all meshes
+          // ── Enable shadows & REPLACE materials with fresh MeshStandardMaterials ──
+          // Creating new materials entirely (not modifying old ones) guarantees colors show correctly
+          const SKIN_COLOR = 0xE0B08A;
+          const HAIR_COLOR = 0x0a0a0a;
+          const KURTA_COLOR = 0x1e3a8a;
+          const BORDER_COLOR = 0xd97706;
+          const PANT_COLOR = 0xf5f5f4;
+          const TEETH_COLOR = 0xfafafa;
+          const EYE_WHITE_COLOR = 0xfafafa;
+          const PUPIL_COLOR = 0x0a0a0a;
+
           model.traverse((node) => {
             if (node.isMesh || node.isSkinnedMesh) {
               node.castShadow = true;
               node.receiveShadow = true;
+
+              // Remove vertex colors from geometry
+              if (node.geometry && node.geometry.attributes && node.geometry.attributes.color) {
+                node.geometry.deleteAttribute('color');
+              }
+
+              if (node.material) {
+                const oldMats = Array.isArray(node.material) ? node.material : [node.material];
+                const newMats = oldMats.map(mat => {
+                  const matName = (mat.name || '').toLowerCase();
+                  const nodeName = (node.name || '').toLowerCase();
+
+                  console.log(`[AvatarLoader] Mesh: "${node.name}" | Material: "${mat.name}"`);
+
+                  let color, roughness, metalness;
+
+                  // ── Classify by name ──
+                  if (matName.includes("hair") || nodeName.includes("hair") || matName.includes("top") || matName.includes("cap") || matName.includes("sides") || matName.includes("scalp")) {
+                    color = HAIR_COLOR; roughness = 0.85; metalness = 0.0;
+                    console.log(`[AvatarLoader]   → HAIR`);
+                  } else if (matName.includes("kurta")) {
+                    color = KURTA_COLOR; roughness = 0.7; metalness = 0.1;
+                    console.log(`[AvatarLoader]   → KURTA`);
+                  } else if (matName.includes("border")) {
+                    color = BORDER_COLOR; roughness = 0.45; metalness = 0.35;
+                    console.log(`[AvatarLoader]   → BORDER`);
+                  } else if (matName.includes("pant")) {
+                    color = PANT_COLOR; roughness = 0.8; metalness = 0.1;
+                    console.log(`[AvatarLoader]   → PANT`);
+                  } else if (matName.includes("teeth")) {
+                    color = TEETH_COLOR; roughness = 0.3; metalness = 0.0;
+                    console.log(`[AvatarLoader]   → TEETH`);
+                  } else if (matName.includes("pupil")) {
+                    color = PUPIL_COLOR; roughness = 0.1; metalness = 0.0;
+                    console.log(`[AvatarLoader]   → PUPIL`);
+                  } else if (matName.includes("eye")) {
+                    color = EYE_WHITE_COLOR; roughness = 0.1; metalness = 0.0;
+                    console.log(`[AvatarLoader]   → EYE`);
+                  } else {
+                    // EVERYTHING ELSE = SKIN
+                    color = SKIN_COLOR; roughness = 0.55; metalness = 0.1;
+                    console.log(`[AvatarLoader]   → SKIN`);
+                  }
+
+                  // Create a brand new material (no old state to fight)
+                  const newMat = new THREE.MeshStandardMaterial({
+                    color: color,
+                    roughness: roughness,
+                    metalness: metalness,
+                    skinning: node.isSkinnedMesh || false,
+                    vertexColors: false,
+                  });
+                  newMat.name = mat.name; // preserve original name for debugging
+
+                  return newMat;
+                });
+
+                // Assign the new material(s)
+                node.material = newMats.length === 1 ? newMats[0] : newMats;
+              }
             }
           });
 
-          // ── 4. Automatically Center, Scale, and Frame the Avatar ──
+          // ── 4. Automatically Center & Scale the Avatar ──
           const box = new THREE.Box3().setFromObject(model);
           const size = box.getSize(new THREE.Vector3());
 
@@ -123,12 +193,58 @@ const AvatarLoader = (() => {
           // Move avatar so it's centered
           model.position.sub(scaledCenter);
 
-          // Raise it so chest is centered
+          // Raise it so bottom is at y=0, top at y=1.8
           model.position.y += 0.9;
 
-          // ── 5. Position the Camera (Waist Up Framing) ──
-          camera.position.set(0, 1.45, 2.2);
-          camera.lookAt(0, 1.35, 0);
+          // ── 5. Position the Camera (Waist-Up Professional Interpreter Framing) ──
+          model.updateMatrixWorld(true);
+
+          let headY = 1.6;
+          let chestY = 1.35;
+          let hipsY = 0.95;
+
+          const headBone = model.getObjectByName("head") || model.getObjectByName("Head");
+          const chestBone = model.getObjectByName("upper-chest") || model.getObjectByName("chest") || model.getObjectByName("Chest");
+          const hipsBone = model.getObjectByName("hips") || model.getObjectByName("Hips");
+
+          const tempV = new THREE.Vector3();
+          if (headBone) {
+            headBone.getWorldPosition(tempV);
+            headY = tempV.y;
+          }
+          if (chestBone) {
+            chestBone.getWorldPosition(tempV);
+            chestY = tempV.y;
+          }
+          if (hipsBone) {
+            hipsBone.getWorldPosition(tempV);
+            hipsY = tempV.y;
+          }
+
+          // Frame from waist (hipsY + 0.15) up to top of head (headY + 0.15)
+          const bottomY = Math.min(hipsY + 0.15, chestY - 0.25);
+          const topY = headY + 0.15;
+          const targetY = (topY + bottomY) / 2;
+          const frameHeight = topY - bottomY;
+
+          // Estimate signing width (arm span/movement box)
+          const frameWidth = frameHeight * 1.25;
+
+          const fovRad = THREE.MathUtils.degToRad(camera.fov || 45);
+          const aspect = camera.aspect || 1.0;
+
+          // Distance required for height & width
+          const distHeight = (frameHeight / 2) / Math.tan(fovRad / 2);
+          const distWidth = (frameWidth / 2) / (aspect * Math.tan(fovRad / 2));
+
+          // Use the maximum distance with a smaller safety margin (1.05) to fill the viewport better
+          const distance = Math.max(distHeight, distWidth) * 1.05;
+
+          console.log(`[AvatarLoader] Camera Framing: headY=${headY.toFixed(2)}, chestY=${chestY.toFixed(2)}, targetY=${targetY.toFixed(2)}, distance=${distance.toFixed(2)}`);
+
+          // Position camera centered on the avatar
+          camera.position.set(0, targetY + 0.15, distance);
+          camera.lookAt(0, targetY - 0.05, 0);
 
           resolve({ model, bones: boneMap, animations: gltf.animations || [] });
         },

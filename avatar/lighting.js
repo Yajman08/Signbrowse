@@ -4,8 +4,13 @@
  */
 const AvatarLighting = (() => {
   function setup(scene) {
+    // Hemisphere light for soft sky/ground gradient lighting
+    const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.45);
+    hemiLight.position.set(0, 20, 0);
+    scene.add(hemiLight);
+
     // Ambient light for general illumination
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.55);
     scene.add(ambientLight);
 
     // Directional light (main key light) representing sun/spot light
